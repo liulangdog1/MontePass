@@ -25,8 +25,8 @@ jobs:
             os: ubuntu-latest
             packages: "numpy==1.26.4 scipy==1.13.1 matplotlib==3.9.2 pillow==10.3.0"
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-python@v5
+      - uses: actions/checkout@v7
+      - uses: actions/setup-python@v7
         with:
           python-version: ${{ matrix.python-version }}
       - name: Install the packages the tests need
