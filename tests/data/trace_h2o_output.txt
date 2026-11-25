@@ -1,0 +1,10 @@
+  Total number of MPI ranks = 32
+  OMP 1st level threads     = 1
+
+ Random Number
+ -------------
+  Offset for the random number seeds based on time: 363
+
+  Range of prime numbers to use as seeds over processors and threads = 2467-2719
+
+  DMC Execution time = 1.1696e+02 secs

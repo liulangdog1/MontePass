@@ -1,0 +1,29 @@
+[build-system]
+requires = ["setuptools>=61"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "montepass"
+version = "0.1.0"
+description = "Automated geometry and reaction-path optimization on the diffusion Monte Carlo energy surface, guided by a DFT surrogate"
+readme = "README.md"
+requires-python = ">=3.9"
+license = { text = "MIT" }
+dependencies = [
+    "numpy>=1.22",
+    "scipy>=1.8",
+    "matplotlib>=3.5",
+    "pillow>=9.0",
+]
+
+[project.urls]
+Repository = "https://github.com/liulangdog1/MontePass"
+
+[project.scripts]
+montepass = "montepass.cli:main"
+
+[tool.setuptools.packages.find]
+where = ["src"]
+
+[tool.setuptools.package-data]
+montepass = ["data/*", "data/**/*"]

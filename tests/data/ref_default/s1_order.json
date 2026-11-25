@@ -1,0 +1,17 @@
+{
+ "order": [
+  0,
+  2,
+  1
+ ],
+ "symbols": [
+  "H",
+  "O",
+  "H"
+ ],
+ "grouped_symbols": [
+  "H",
+  "H",
+  "O"
+ ]
+}

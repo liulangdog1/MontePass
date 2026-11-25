@@ -1,0 +1,62 @@
+          [ ... 51 lines of the original output left out ... ]
+
+
+                         Program Version 6.1.0  -  RELEASE   -
+                                (GIT: $679e74b$)
+                          ($2025-06-10 18:02:51 +0200$)
+          [ ... 153 lines of the original output left out ... ]
+
+================================================================================
+                                       INPUT FILE
+================================================================================
+NAME = opt.inp
+|  1> ! B3LYP def2-SVP TightOpt TightSCF
+|  2> %maxcore 6144
+|  3> %pal nprocs 4 end
+|  4> %geom
+|  5>   MaxIter 1
+|  6> end
+|  7> * xyzfile 0 1 opt_start.xyz
+|  8> 
+|  9>                          ****END OF INPUT****
+================================================================================
+          [ ... 663 lines of the original output left out ... ]
+
+-------------------------   --------------------
+FINAL SINGLE POINT ENERGY       -56.471343481636
+-------------------------   --------------------
+
+          [ ... 82 lines of the original output left out ... ]
+
+                                .--------------------.
+          ----------------------|Geometry convergence|-------------------------
+          Item                value                   Tolerance       Converged
+          ---------------------------------------------------------------------
+          RMS gradient        0.0101124186            0.0000300000      NO
+          MAX gradient        0.0202017509            0.0001000000      NO
+          RMS step            0.0353411021            0.0006000000      NO
+          MAX step            0.0603086955            0.0010000000      NO
+          -------------------------------------------------------------------------
+          ........................................................
+          Max(Bonds)      0.0280      Max(Angles)    3.46
+          Max(Dihed)        0.00      Max(Improp)    2.48
+          ---------------------------------------------------------------------
+
+The optimization has not yet converged - more geometry cycles are needed
+          [ ... 31 lines of the original output left out ... ]
+
+
+
+
+    ----------------------------------------------------------------------------
+                                  WARNING !!!
+       The optimization did not converge but reached the maximum number of
+       optimization cycles.
+       Please check your results very carefully.
+    ----------------------------------------------------------------------------
+
+          [ ... 96 lines of the original output left out ... ]
+SCF Gradient evaluation          ...        0.950 sec (=   0.016 min)  12.9 %
+Geometry relaxation              ...        0.039 sec (=   0.001 min)   0.5 %
+                             ****ORCA TERMINATED NORMALLY****
+TOTAL RUN TIME: 0 days 0 hours 0 minutes 8 seconds 926 msec

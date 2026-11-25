@@ -1,0 +1,59 @@
+          [ ... 45 lines of the original output left out ... ]
+
+
+                         Program Version 5.0.3 -  RELEASE  -
+
+
+          [ ... 109 lines of the original output left out ... ]
+
+================================================================================
+                                       INPUT FILE
+================================================================================
+NAME = freq.inp
+|  1> ! B3LYP def2-SVP TightSCF Freq
+|  2> %maxcore 6144
+|  3> %pal nprocs 4 end
+|  4> * xyzfile 0 1 freq_geom.xyz
+|  5> 
+|  6>                          ****END OF INPUT****
+================================================================================
+          [ ... 599 lines of the original output left out ... ]
+
+-------------------------   --------------------
+FINAL SINGLE POINT ENERGY       -56.473099141148
+-------------------------   --------------------
+
+          [ ... 120 lines of the original output left out ... ]
+     CP-SCF ITERATION   3:   2.0392e-04 (   0.1 sec   3/ 12 done)
+     CP-SCF ITERATION   4:   3.2791e-05 (   0.1 sec  12/ 12 done)
+                    *** THE CP-SCF HAS CONVERGED ***
+
+                                                 ... done   (      0.9 sec)
+          [ ... 11 lines of the original output left out ... ]
+
+-----------------------
+VIBRATIONAL FREQUENCIES
+-----------------------
+
+Scaling factor for frequencies =  1.000000000  (already applied!)
+
+   0:         0.00 cm**-1
+   1:         0.00 cm**-1
+   2:         0.00 cm**-1
+   3:         0.00 cm**-1
+   4:         0.00 cm**-1
+   5:         0.00 cm**-1
+   6:      1061.88 cm**-1
+   7:      1655.81 cm**-1
+   8:      1656.00 cm**-1
+   9:      3441.13 cm**-1
+  10:      3557.82 cm**-1
+  11:      3558.18 cm**-1
+
+
+------------
+          [ ... 190 lines of the original output left out ... ]
+SCF iterations                  ...        3.859 sec (=   0.064 min)  42.3 %
+Analytical frequency calculation...        4.314 sec (=   0.072 min)  47.3 %
+                             ****ORCA TERMINATED NORMALLY****
+TOTAL RUN TIME: 0 days 0 hours 0 minutes 11 seconds 238 msec

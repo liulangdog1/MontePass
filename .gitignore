@@ -1,0 +1,41 @@
+# Python
+__pycache__/
+*.py[cod]
+*.egg-info/
+build/
+dist/
+.venv/
+venv/
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Editor files
+.vscode/
+.idea/
+
+# Secrets
+.env
+.env.*
+*.pem
+*.key
+id_rsa*
+id_ed25519*
+credentials.json
+
+# Site-specific machine profiles hold private paths: keep them out of the repository
+machines/local/
+*.local.ini
+
+# Project run folders and large QMC outputs
+work/
+runs/
+*.h5
+*.hdf5
+*.config.h5
+*.dmc.dat
+*.stat.h5
+*.gbw
+*.densities
+slurm-*.out

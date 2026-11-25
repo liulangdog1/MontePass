@@ -1,0 +1,37 @@
+name: tests
+
+# Unit tests on every push and pull request. They need no cluster program.
+# The package versions are the ones with which the tests were run by hand.
+
+on:
+  push:
+  pull_request:
+
+permissions:
+  contents: read
+
+jobs:
+  unit-tests:
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          # Python 3.9 is not offered for the newest runner image (Ubuntu 26.04), so this job names an older image.
+          - python-version: "3.9"
+            os: ubuntu-24.04
+            packages: "numpy==2.0.2 scipy==1.13.1 matplotlib==3.9.4 pillow==11.3.0"
+          - python-version: "3.12"
+            os: ubuntu-latest
+            packages: "numpy==1.26.4 scipy==1.13.1 matplotlib==3.9.2 pillow==10.3.0"
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: ${{ matrix.python-version }}
+      - name: Install the packages the tests need
+        run: python -m pip install ${{ matrix.packages }}
+      - name: Unit tests
+        env:
+          MPLBACKEND: Agg
+        run: python -W error -m unittest discover -s tests

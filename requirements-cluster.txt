@@ -1,0 +1,8 @@
+# Versions of the Python environment of the cluster on which the system tests ran (Python 3.9.21).
+# PySCF and h5py are needed only there, by the calculation scripts.
+numpy==1.26.4
+scipy==1.10.1
+matplotlib==3.7.1
+pillow==9.5.0
+pyscf==2.1.1
+h5py==3.8.0

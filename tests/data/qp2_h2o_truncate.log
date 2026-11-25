@@ -1,0 +1,99 @@
+Date: 24/11/2026 10:04:28
+===============
+Quantum Package
+===============
+
+Git Commit: Merge branch 'master' of github.com:QuantumPackage/qp2
+Git Date  : Tue Jan 20 13:59:33 2026 +0100
+Git SHA1  : b65c9cf931ed922344ffe25a79b1728b091d7f34
+EZFIO Dir : trunc.ezfio
+
+
+Task server running : tcp://192.0.2.1:42529
+
+.. >>>>> [ RES  MEM :          0.011 GB ] [ VIRT MEM :          0.121 GB ] <<<<< ..
+.. >>>>> [ WALL TIME:           0.05  s ] [ CPU  TIME:           0.01  s ] <<<<< ..
+
+
+Nuclear Coordinates (Angstroms)
+===============================
+
+================ ============ ============ ============ ============
+      Atom          Charge          X            Y            Z 
+================ ============ ============ ============ ============
+O                    6.000000     0.000000     0.000000     0.000000
+H                    1.000000     0.000000     0.763127    -0.585568
+H                    1.000000     0.000000    -0.763127    -0.585568
+================ ============ ============ ============ ============
+
+Minimal interatomic distance found:       0.9619 Angstrom
+
+.. >>>>> [ RES  MEM :          0.012 GB ] [ VIRT MEM :          0.121 GB ] <<<<< ..
+.. >>>>> [ WALL TIME:           0.05  s ] [ CPU  TIME:           0.01  s ] <<<<< ..
+
+* Nuclear repulsion energy                           6.948365889560031    
+ * mo_label          Canonical
+* Number of determinants                                     24383
+* mo_num                                                        57
+* N_int                                                          1
+ Read  mo_coef
+* Dimension of the psi arrays                                24383
+ Read psi_det
+* Number of unique alpha determinants                         3256
+ Read psi_coef       24383           1
+* Number of unique beta determinants                          3256
+.. >>>>> [ IO READ: mo_class ] <<<<< ..
+ MO map initialized:               1367031
+* Total available memory (GB)                                  374
+* Target maximum memory (GB)                                    20
+.. >>>>> [ RES  MEM :          0.016 GB ] [ VIRT MEM :          3.526 GB ] <<<<< ..
+ 
+ Cholesky decomposition of AO integrals
+ ======================================
+ 
+ ============ =============
+     Rank       Threshold
+ ============ =============
+        21       1.326E-01
+       117       1.308E-02
+       215       1.204E-03
+       252       1.108E-04
+       340       1.060E-05
+       436       1.020E-06
+       539       9.570E-08
+       647       9.512E-09
+       765       9.284E-10
+       887       9.171E-11
+      1009       9.042E-12
+      1122       9.914E-13
+ ============ =============
+ 
+ Rank  :         1122 (   27.392578125000000       %)
+ 
+ Time to provide AO cholesky vectors =    4.0073727319637931E-002  min
+ 
+ AO->MO Transformation of Cholesky vectors
+ -----------------------------------------
+ 
+ Time to provide MO cholesky vectors =    6.5530613064765928E-004  min
+ Molecular integrals provided:
+  Size of MO map              24.418159484863281      MB
+  Number of MO integrals:               1015001
+  cpu  time :   16.901404000000003      s
+  wall time :   2.7444245368242264      s  ( x    6.1584509878919276      )
+ 
+ Number of determinants:          55
+* Number of unique alpha determinants                         3256
+* Number of unique beta determinants                          3256
+* Number of unique alpha determinants                            9
+* Number of unique beta determinants                             8
+* Saved determinants                                            55
+ Computing H|Psi> ...
+ Providing the one-electron integrals
+ Providing the nuclear electron pseudo integrals (local)
+ Providing the nuclear electron pseudo integrals (non-local)
+ MO integrals cache: (           1 ,           57 ),                  2048 MiB
+ Done
+ E(           1 ) =   -16.980443615992346     
+Wall time: 0:00:06
+

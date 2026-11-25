@@ -1,0 +1,95 @@
+          [ ... 51 lines of the original output left out ... ]
+
+
+                         Program Version 6.1.0  -  RELEASE   -
+                                (GIT: $679e74b$)
+                          ($2025-06-10 18:02:51 +0200$)
+          [ ... 153 lines of the original output left out ... ]
+
+================================================================================
+                                       INPUT FILE
+================================================================================
+NAME = opt.inp
+|  1> ! B3LYP def2-SVP TightOpt TightSCF Freq
+|  2> %maxcore 6144
+|  3> %pal nprocs 4 end
+|  4> * xyzfile 0 1 opt_start.xyz
+|  5> 
+|  6>                          ****END OF INPUT****
+================================================================================
+          [ ... 706 lines of the original output left out ... ]
+
+-------------------------   --------------------
+FINAL SINGLE POINT ENERGY       -56.472975290606
+-------------------------   --------------------
+
+          [ ... 1905 lines of the original output left out ... ]
+
+-------------------------   --------------------
+FINAL SINGLE POINT ENERGY       -56.473096952721
+-------------------------   --------------------
+
+          [ ... 86 lines of the original output left out ... ]
+
+                                .--------------------.
+          ----------------------|Geometry convergence|-------------------------
+          Item                value                   Tolerance       Converged
+          ---------------------------------------------------------------------
+          Energy change       0.0000021388            0.0000010000      NO
+          RMS gradient        0.0000060733            0.0000300000      YES
+          MAX gradient        0.0000104488            0.0001000000      YES
+          RMS step            0.0000258980            0.0006000000      YES
+          MAX step            0.0000550107            0.0010000000      YES
+          -------------------------------------------------------------------------
+          ........................................................
+          Max(Bonds)      0.0000      Max(Angles)    0.00
+          Max(Dihed)        0.00      Max(Improp)    0.00
+          ---------------------------------------------------------------------
+
+       Everything but the energy has converged. However, the energy
+       appears to be close enough to convergence to make sure that the
+       final evaluation at the new geometry represents the equilibrium energy.
+       Convergence will therefore be signaled now
+
+
+                    ***********************HURRAY********************
+                    ***        THE OPTIMIZATION HAS CONVERGED     ***
+                    *************************************************
+
+
+          [ ... 686 lines of the original output left out ... ]
+
+-------------------------   --------------------
+FINAL SINGLE POINT ENERGY       -56.473098845005
+-------------------------   --------------------
+
+                                *** OPTIMIZATION RUN DONE ***
+
+          [ ... 187 lines of the original output left out ... ]
+
+-----------------------
+VIBRATIONAL FREQUENCIES
+-----------------------
+
+Scaling factor for frequencies =  1.000000000  (already applied!)
+
+     0:       0.00 cm**-1
+     1:       0.00 cm**-1
+     2:       0.00 cm**-1
+     3:       0.00 cm**-1
+     4:       0.00 cm**-1
+     5:       0.00 cm**-1
+     6:    1062.14 cm**-1
+     7:    1656.14 cm**-1
+     8:    1656.22 cm**-1
+     9:    3441.18 cm**-1
+    10:    3557.90 cm**-1
+    11:    3558.27 cm**-1
+
+
+------------
+          [ ... 295 lines of the original output left out ... ]
+SCF Gradient evaluation          ...        4.825 sec (=   0.080 min)  11.0 %
+Geometry relaxation              ...        0.123 sec (=   0.002 min)   0.3 %
+                             ****ORCA TERMINATED NORMALLY****
+TOTAL RUN TIME: 0 days 0 hours 0 minutes 49 seconds 755 msec

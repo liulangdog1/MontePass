@@ -1,0 +1,100 @@
+<?xml version="1.0"?>
+<simulation>
+   <project id="dmc2" series="0">
+      <parameter name="driver_version"      >    legacy          </parameter>
+      <application name="qmcpack" role="molecu" class="serial" version="1.0"/>
+   </project>
+   <random seed="615"/>
+   <qmcsystem>
+      <simulationcell>
+         <parameter name="bconds">
+            n n n
+         </parameter>
+      </simulationcell>
+      <particleset name="e" random="yes" randomsrc="ion0">
+         <group name="u" size="4" mass="1.0">
+            <parameter name="charge"              >    -1                    </parameter>
+            <parameter name="mass"                >    1.0                   </parameter>
+         </group>
+         <group name="d" size="4" mass="1.0">
+            <parameter name="charge"              >    -1                    </parameter>
+            <parameter name="mass"                >    1.0                   </parameter>
+         </group>
+      </particleset>
+      <particleset name="ion0">
+         <group name="H" size="2" mass="1837.3622207895">
+            <parameter name="charge"              >    1                     </parameter>
+            <parameter name="valence"             >    1                     </parameter>
+            <parameter name="atomicnumber"        >    1                     </parameter>
+            <parameter name="mass"                >    1837.3622207895            </parameter>
+            <attrib name="position" datatype="posArray" condition="0">
+                     0.0000000000       1.4421002308      -1.1065624266
+                     0.0000000000      -1.4421002308      -1.1065624266
+            </attrib>
+         </group>
+         <group name="O" size="1" mass="29165.1220462523">
+            <parameter name="charge"              >    6                     </parameter>
+            <parameter name="valence"             >    6                     </parameter>
+            <parameter name="atomicnumber"        >    8                     </parameter>
+            <parameter name="mass"                >    29165.1220462523            </parameter>
+            <attrib name="position" datatype="posArray" condition="0">
+                     0.0000000000       0.0000000000       0.0000000000
+            </attrib>
+         </group>
+      </particleset>
+      <wavefunction name="psi0" target="e">
+         <determinantset type="MolecularOrbital" href="../centre/scf.h5" source="ion0" transform="yes" name="LCAOBSet">
+            <slaterdeterminant>
+               <determinant id="updet" size="4">
+                  <occupation mode="ground"> </occupation>
+                  <coefficient size="58" spindataset="0"> </coefficient>
+               </determinant>
+               <determinant id="downdet" size="4">
+                  <occupation mode="ground"> </occupation>
+                  <coefficient size="58" spindataset="0"> </coefficient>
+               </determinant>
+            </slaterdeterminant>
+         </determinantset>
+         <jastrow type="One-Body" name="J1" function="bspline" source="ion0" print="yes">
+            <correlation elementType="H" size="6" rcut="6.0" cusp="0.0">
+               <coefficients id="eH" type="Array"> 0.51 0.52 0.53 0.54 0.55 0.56 </coefficients>
+            </correlation>
+            <correlation elementType="O" size="6" rcut="6.0" cusp="0.0">
+               <coefficients id="eO" type="Array"> 0.52 0.54 0.56 0.58 0.6 0.62 </coefficients>
+            </correlation>
+         </jastrow>
+         <jastrow type="Two-Body" name="J2" function="bspline" print="yes">
+            <correlation speciesA="u" speciesB="u" size="8" rcut="8.0">
+               <coefficients id="uu" type="Array"> 0.54 0.58 0.62 0.66 0.7 0.74 0.78 0.82 </coefficients>
+            </correlation>
+            <correlation speciesA="u" speciesB="d" size="8" rcut="8.0">
+               <coefficients id="ud" type="Array"> 0.53 0.56 0.59 0.62 0.65 0.68 0.71 0.74 </coefficients>
+            </correlation>
+         </jastrow>
+      </wavefunction>
+      <hamiltonian name="h0" type="generic" target="e">
+         <pairpot type="coulomb" name="ElecElec" source="e" target="e"/>
+         <pairpot type="coulomb" name="IonIon" source="ion0" target="ion0"/>
+         <pairpot type="pseudo" name="PseudoPot" source="ion0" wavefunction="psi0" format="xml">
+            <pseudo elementType="H" href="H.ccECP.xml"/>
+            <pseudo elementType="O" href="O.ccECP.xml"/>
+         </pairpot>
+      </hamiltonian>
+   </qmcsystem>
+   <qmc method="vmc" move="pbyp" checkpoint="-1">
+      <parameter name="warmupSteps"         >    30              </parameter>
+      <parameter name="blocks"              >    40              </parameter>
+      <parameter name="steps"               >    10              </parameter>
+      <parameter name="subSteps"            >    3               </parameter>
+      <parameter name="timestep"            >    0.3             </parameter>
+      <parameter name="samples"             >    2048            </parameter>
+      <parameter name="walkers"             >    1               </parameter>
+   </qmc>
+   <qmc method="dmc" move="pbyp" checkpoint="-1">
+      <parameter name="warmupSteps"         >    2000            </parameter>
+      <parameter name="blocks"              >    400             </parameter>
+      <parameter name="steps"               >    500             </parameter>
+      <parameter name="timestep"            >    0.005           </parameter>
+      <parameter name="nonlocalmoves"       >    yes             </parameter>
+   </qmc>
+</simulation>
