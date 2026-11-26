@@ -17,7 +17,8 @@ Steps:
 3. **Search directions.** The surrogate Hessian, projected into the subspace and diagonalized,
    gives the search directions and their curvatures at each target geometry.
 4. **QMC settings.** Short pilot runs measure variance, correlation time, acceptance and timing,
-   and the package chooses time step, walkers, block length and block counts.
+   and the package chooses the time step, the block length and the block counts. The walker count is
+   `[qmc] walkers` (default 2048), rounded up to a multiple of the MPI ranks.
 5. **Search.** Each target geometry (minimum or saddle) is optimized on the DMC energy surface:
    the classic line search, the stability audit, and the dense-scan search (protocol v1 or v2).
 6. **Final energies.** Full-length DMC runs at the starting geometry and at the optimized
@@ -78,8 +79,11 @@ src/montepass/
 - A step that fails must say so: raise an exception with the file and the reason, or set a state
   `FAILED` / `NEEDS_ATTENTION` with a message. A missing or empty file is never read as "nothing to do".
 - No path, module name, user name or cluster name in the source. Such values come from the machine profile.
-- Tests: `python -m unittest discover -s tests`, standard library only, each test file runs in seconds
-  and needs no cluster program. Code that talks to a program (ORCA, PySCF, QMCPACK, SLURM) is tested
+- Tests: `python -m unittest discover -s tests`, standard library only; no test file needs a cluster
+  program. In a run of the development version of the tests on the cluster on 2026-11-24 (22 files
+  and 538 tests; one of these files is not in this repository), `test_dense_search`, `test_report`,
+  `test_trial_stage` and `test_workflow_model` took 61 to 125 s each, and each of the other 17 files
+  of this repository took 17 s or less. Version 0.1.0 has 21 test files and 551 tests. Code that talks to a program (ORCA, PySCF, QMCPACK, SLURM) is tested
   against saved output files and a fake scheduler.
 - Docstrings and messages are written in plain English: short sentences, exact numbers, units given.
 
@@ -222,9 +226,12 @@ with reference values. Their results are in [validation.md](validation.md).
 
 - Protocol v1 is a copy of registered rules. Do not change `search/protocol_v1.py`.
 - A change of protocol v2 is checked with `examples/model_study/calibrate_v2.py` on the model
-  surfaces: the fraction of `CONVERGED` runs whose final geometry is within the tolerance must stay
-  at about 95 % or more in every case (96 runs per case; docs/protocols.md has the numbers of the
-  last run), and `compare_protocols.py` must not show a higher cost.
+  surfaces (96 runs per case; docs/protocols.md, section 5, has the numbers of the last run). The
+  fraction of `CONVERGED` runs whose final geometry is within the tolerance must stay at 95 % or
+  more in every case in which the surrogate has the right couplings (18 cases; lowest value of the
+  last run 97 %). In the four cases with a turned surrogate it must not fall below the values of the
+  last run (92 % to 99 % at the tolerance 0.2, 68 % to 95 % at the tolerance 0.05).
+  `compare_protocols.py` must not show a higher cost.
 - A rule that did not help stays in the code as an option that is off, with the measured numbers in
   docs/protocols.md (`pool`, `secant`, `shrink_final`, `coupling_fit`, `shape_distrust`). So nobody
   tries it again without knowing the result.

@@ -77,7 +77,8 @@ variance = 0.999
 max_dim = auto
 
 [qmc]
-; auto = short pilot runs choose the settings; fixed = the values below are used as they are;
+; auto = short pilot runs choose the settings; fixed = the values below are used as they are, except that the
+; walker count is rounded up to a multiple of the MPI ranks;
 ; iterative = as auto, and a pilot is repeated (at most max_repeats times) when a check fails
 mode = auto
 max_repeats = 2
@@ -87,7 +88,9 @@ basis = ccecpccpvtz
 ecp = ccecp
 ; wanted error bar of the final DMC energy of one geometry, kcal/mol (modes auto and iterative)
 sigma_target = 0.2
-; DMC settings (starting values in mode auto)
+; DMC settings. In the modes auto and iterative values chosen from the pilot runs replace timestep, steps and
+; warmup_steps. walkers is used in every mode (the pilot runs use their own walker count), rounded up to a
+; multiple of the MPI ranks
 timestep = 0.005
 walkers = 2048
 steps = 500
@@ -100,6 +103,7 @@ jastrow_reuse = centre
 
 [trial]
 ; Energies that are computed AFTER the geometry search. The geometry search itself always uses one determinant.
+; This stage is experimental: see docs/multireference.md, section 9.
 ; single   = nothing more is computed
 ; multidet = when the search of every target has ended: DMC energies with a trial wave function of several
 ;            determinants (from Quantum Package 2) at the start geometry and at the final geometry of every target
@@ -153,7 +157,9 @@ random_space = all
 move_surrogate = yes
 
 [machine]
-; name of a machine profile (machines/<name>.ini, machines/local/<name>.ini) or a path to one
+; name of a machine profile, or a path to one. A name is looked up as <name>.ini in this order: the project
+; folder, $MONTEPASS_MACHINES, ~/.config/montepass/machines, machines/local/ and machines/ of the clone.
+; example_slurm is the example profile, whose paths are placeholders: write the name of your own profile here.
 profile = example_slurm
 
 [report]

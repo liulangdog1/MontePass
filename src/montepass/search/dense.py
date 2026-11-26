@@ -19,7 +19,9 @@ continues where the previous one stopped. No decision depends on anything but th
 surrogate and the block energies that the driver itself requested.
 
 Two protocols exist (see ``protocol_v1`` and ``protocol_v2``). The rules of protocol v1
-are those of an earlier application and are reproduced exactly.
+are those of an earlier application; ``protocol_v1`` is a line-by-line port of them. The test
+that replays the block traces of that application needs data that are not part of this
+repository (docs/protocols.md, section 2).
 """
 from __future__ import annotations
 

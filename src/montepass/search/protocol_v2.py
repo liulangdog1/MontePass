@@ -157,8 +157,8 @@ class ProtocolV2:
                                                 # DMC measured along the steps between centres, when the model Hessian
                                                 # does not predict these changes (see fit_couplings). Off by default: on
                                                 # the model with a turned surrogate surface it made the result worse
-                                                # (11 of 16 runs within the tolerance, against 16 of 16 without it; see
-                                                # docs/protocols.md)
+                                                # (24 of 32 runs within the tolerance for water and 28 of 32 for
+                                                # ammonia, against 32 and 31 of 32 without it; see docs/protocols.md)
     coupling_fit_z: float = 3.09                # the fit is made only if the model is rejected at this level (3.09: 99.9 %)
     coupling_fit_prior: float = 0.5             # width of the prior of a coupling K_ij, in units of sqrt(|K_ii K_jj|)
     coupling_fit_memory: int = 6                # number of steps between centres that the fit uses
@@ -180,9 +180,10 @@ class ProtocolV2:
                                                 # surfaces near their own minima)
     shape_distrust: bool = False                # True: along a direction where DMC contradicted the force constant of
                                                 # the surrogate, use shape_mismatch_plain in place of shape_mismatch.
-                                                # Off by default: on the models with a turned surrogate Hessian it cost
-                                                # up to 70 % more blocks and did not raise the number of runs within the
-                                                # tolerance (see docs/protocols.md)
+                                                # Off by default: on the four models with a turned surrogate it raised
+                                                # the runs within the tolerance from 28 to 29 of 32 in one model (water,
+                                                # Hessian turned), left them unchanged in the other three, and cost up
+                                                # to 43 % more search blocks (see docs/protocols.md)
     shape_mismatch_plain: float = 1.0           # the same where the surrogate is NOT subtracted (a centre far from the
                                                 # stationary point of the surrogate): the slope of a plain pair of DMC
                                                 # points carries the whole cubic part of the DMC surface. Its size is

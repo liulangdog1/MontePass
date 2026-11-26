@@ -32,8 +32,9 @@ The method has no convergence test. The package adds two checks that do not chan
 ## 2. Dense scans, protocol v1 (`method = dense-v1`)
 
 Protocol v1 is the set of rules that was fixed in advance for an earlier application of the method
-to a larger molecule. The module `search/protocol_v1.py` is a line-by-line copy and must not be
-changed.
+to a larger molecule. The module `search/protocol_v1.py` is a line-by-line port of these rules and
+must not be changed. The test that replays the stored block traces of that application through the
+port needs data that are not part of this repository, so this repository has no such test.
 
 - Points: two shells per direction at `+-R/2` and `+-R`, with `R = sqrt(2 e_cap / k)` and
   `e_cap = 5 kcal/mol`. Two full-length runs at every centre.
@@ -188,7 +189,7 @@ model surfaces of section 5 or saved no blocks:
 | `secant` | corrects the model Hessian with a rank-one update from measured slope changes | in a traced run with noisy slopes it gave force constants of 655 and 32,145 where the true values were 2,684 and 2,153 |
 | `shrink_final` | multiplies the last step by `max(0, 1 - N / G)` | the bound `c N` is a statement about the full step; with the factor a run could stop without moving |
 | `coupling_fit` | fits the couplings between the directions to the slope changes measured along the steps between centres, when the model Hessian does not predict them (99.9 % level), with the surrogate couplings as the prior | on the model with a turned surrogate surface (section 5) 24 of 32 runs (water) and 28 of 32 (ammonia) ended within the tolerance, against 32 and 31 without the option; with only the harmonic part turned, 29 and 30 against 28 and 30. The fitted couplings were close to the true ones, but a correct Hessian passes a systematic slope error on to the geometry in full |
-| `shape_distrust` | uses a shape part of 1.0 (in place of 0.3) times the cubic part of the surrogate along a direction where DMC contradicted the surrogate force constant | on the four models with a turned surrogate it changed 1 of 128 runs (29 against 28 of 32 within the tolerance for water with the harmonic part turned) and cost up to 43 % more search blocks (1,352 against 945) |
+| `shape_distrust` | uses a shape part of 1.0 (in place of 0.3) times the cubic part of the surrogate along a direction where DMC contradicted the surrogate force constant | on the four models with a turned surrogate (32 runs each) it raised the number of runs within the tolerance from 28 to 29 of 32 in one model (water with the harmonic part turned) and left it unchanged in the other three; it cost up to 43 % more search blocks (1,352 against 945, in that model) |
 
 ## 4. `method = auto`
 

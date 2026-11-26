@@ -9,10 +9,30 @@
 | PySCF (with h5py) | trial orbitals for QMC, surrogate gradients and Hessians | cluster |
 | QMCPACK with `convert4qmc`, and `PyscfToQmcpack.py` from its source tree | Jastrow optimization, VMC, DMC | cluster |
 | ccECP pseudopotential files `<Element>.ccECP.xml` | QMCPACK | cluster |
-| Quantum Package 2, and `utils/determinants_tools.py` from the QMCPACK source tree | only for `[trial] kind = multidet`: trial wave functions with several determinants | cluster |
+| Quantum Package 2, and `utils/determinants_tools.py` from the QMCPACK source tree | only for `[trial] kind = multidet` (an experimental stage): trial wave functions with several determinants | cluster |
 
 The package does not need a workflow manager. It writes the input of every program itself and starts
 every calculation as a batch job.
+
+Tested versions:
+
+- Unit tests: with the versions of `requirements.txt` (development computer, Python 3.9.6 and 3.12.2)
+  and of `requirements-cluster.txt` (the cluster of the system tests: Python 3.9.21, numpy 1.26.4,
+  scipy 1.10.1, matplotlib 3.7.1, pillow 9.5.0, PySCF 2.1.1, h5py 3.8.0).
+- A fresh install on the cluster on 2026-11-26: a new clone of version 0.1.0 in a new virtual
+  environment of Python 3.13.5. After `pip install -e .` all 551 unit tests passed; PySCF and h5py
+  were not installed yet (the unit tests do not need them). Then `pip install pyscf h5py`. After this
+  second install the environment held numpy 2.5.5, scipy 1.18.1, matplotlib 3.11.2, pillow 13.0.0,
+  PySCF 2.15.1 and h5py 3.16.0, and all 4 examples ran ([examples/README.md](../examples/README.md)).
+  These versions were read after the second install, not at the time of the unit tests.
+- Cluster programs of the test runs: ORCA 6.1.0, QMCPACK 4.1.9 (a development build; the inputs that
+  the package writes use the legacy drivers) and, for the stage with several determinants, Quantum
+  Package 2.
+- `PyscfToQmcpack.py` is not part of PySCF. The script is in the folder `src/QMCTools` of a QMCPACK
+  source tree, and `[executables] pyscf_qmctools` (section 2) names that folder. The test runs took
+  the script from an older QMCPACK source tree than that of the 4.1.9 programs. A copy from the source
+  tree of the QMCPACK programs that you use is the safer choice, because `convert4qmc` reads the file
+  that the script writes.
 
 ## 2. The machine profile
 
@@ -20,10 +40,20 @@ A machine profile is one INI file that holds everything that depends on your clu
 prepare the environment of a job, the commands of the programs, the MPI launch line, the folder of the
 pseudopotential files, and the batch options of each kind of job.
 
-Copy `machines/example_slurm.ini` to `machines/local/<name>.ini` and edit it. The folder
-`machines/local/` is not tracked by git, so private paths stay private. A profile is found by its name
-in these places, in this order: the project folder, `$MONTEPASS_MACHINES`,
-`~/.config/montepass/machines`, `machines/local/`, `machines/`.
+Make the folder and copy the example, then edit the copy:
+
+```bash
+mkdir -p machines/local
+cp machines/example_slurm.ini machines/local/<name>.ini
+```
+
+The folder `machines/local/` is not tracked by git, so private paths stay private; for the same
+reason a fresh clone does not have it. A profile is found by its name in these places, in this
+order: the project folder, `$MONTEPASS_MACHINES`, `~/.config/montepass/machines`, `machines/local/`,
+`machines/`. The folders `machines/local/` and `machines/` are those of the clone. The package finds
+them from the location of its own source files, not from the current folder, so it finds them only
+when it is installed from the clone with `pip install -e .`. The input file of a project names its profile with
+`[machine] profile = <name>` (section 3).
 
 | Section | Keys | Meaning |
 |---|---|---|
@@ -43,12 +73,19 @@ sockets. Measured on a node where the 32 cores of a job were split 20 + 12 over 
 Open MPI refused to start; with `--bind-to core:overload-allowed` 32 processes ran on 28 cores and
 the same run took 21.1 s. Never use `overload-allowed`.
 
-`python -m montepass check <folder>` reads the input file and the profile and lists every problem
-it can see without running a job.
+`python -m montepass check <folder>` runs no job. The command checks every key of the input file and
+that the geometry files exist. Then the command finds the profile and checks only these points: the
+section `[executables]` exists; with SLURM the sections `[slurm]`, `[job.scf]` and `[job.qmc]` exist
+(with `scheduler = local` the section `[machine]`); and the pseudopotential folder exists. With
+`[trial] kind = multidet` the command also checks the keys for Quantum Package 2 (next part of this
+section). The command does not test the programs of `[executables]` (not the ORCA path, not the
+folder `pyscf_qmctools`, not the file `determinants_tools`) and does not run the lines of the
+`[setup.*]` sections. A wrong path there shows only when the first job of that kind runs.
 
 ### Profile sections for Quantum Package 2
 
-These sections and keys are needed only for the input option `[trial] kind = multidet` (section 3).
+These sections and keys are needed only for the input option `[trial] kind = multidet` (section 3), an
+experimental stage.
 A project without that option does not read them.
 
 | Section | Keys | Meaning |
@@ -125,11 +162,11 @@ minimal input names only the geometry files.
 
 | Key | Default | Meaning |
 |---|---|---|
-| `mode` | `auto` | `auto`: pilot runs choose the settings. `fixed`: the values below are used as they are. `iterative`: as `auto`, and a pilot is repeated when a check fails. |
+| `mode` | `auto` | `auto`: pilot runs choose the settings. `fixed`: the values below are used as they are, except that the walker count is rounded up to a multiple of the MPI ranks. `iterative`: as `auto`, and a pilot is repeated when a check fails. |
 | `max_repeats` | 2 | limit of repeats in mode `iterative` |
 | `xc`, `basis`, `ecp` | `b3lyp`, `ccecpccpvtz`, `ccecp` | Kohn-Sham calculation of the trial orbitals (PySCF names) |
 | `sigma_target` | 0.2 | wanted error bar (kcal/mol) of the final DMC energy of one geometry. In the modes `auto` and `iterative` the number of blocks of a final run follows from it. |
-| `timestep`, `walkers`, `steps`, `warmup_steps` | 0.005, 2048, 500, 2000 | DMC settings (starting values in mode `auto`) |
+| `timestep`, `walkers`, `steps`, `warmup_steps` | 0.005, 2048, 500, 2000 | DMC settings. In the modes `auto` and `iterative` values chosen from the pilot runs replace `timestep`, `steps` and `warmup_steps`. `walkers` is used in every mode (the pilot runs use their own walker count), rounded up to a multiple of the MPI ranks. |
 | `jastrow_reuse` | `centre` | `centre`: scan points start their Jastrow optimization from the Jastrow factor of their centre. `none`: every point starts from zero. |
 | `slow_factor` | 3.0 | a DMC run whose blocks take this many times longer than those of the other points is cancelled and submitted again once, away from its nodes. 0 switches the check off. |
 
@@ -137,6 +174,11 @@ minimal input names only the geometry files.
 
 This section asks for DMC energies with several determinants. The package computes these energies
 after the geometry search. The geometry search itself always uses one determinant.
+
+This stage is experimental. In the tests, the short expansions of the cutoff 1e-3 gave DMC energies
+above those of the single RHF determinant for water and ammonia; for HCN, and with the cutoff 1e-4
+for all three molecules, the energies were below. The cause was not investigated
+([multireference.md](multireference.md), section 9, gives all measured values).
 
 | Key | Default | Meaning |
 |---|---|---|
@@ -230,7 +272,7 @@ The results are in `results/trial_wavefunctions.md` and `results/trial_wavefunct
 | `method` | `dense-v2` | `classic`, `dense-v1`, `dense-v2`, or `auto` (one classic iteration; if its stability audit or its bracket check fails, `dense-v2` starts from the same geometry). See [protocols.md](protocols.md). |
 | `eps_total` | 0.2 | tolerance on the energy of the final geometry in kcal/mol |
 | `e_cap` | 5.0 | energy rise at the outer scan points in kcal/mol |
-| `max_iter` | 20 | largest number of scan iterations per target. A start near the minimum needs 1 to 3; a start that is 0.2 angstrom per atom away needs 5 to 8. |
+| `max_iter` | 20 | largest number of scan iterations per target. In the tests a start near the minimum needed 1 to 3. Real DMC runs from a start moved by 0.2 angstrom (root mean square per atom) needed 3 to 7, and runs on the model surfaces needed 5 to 7 on average ([validation.md](validation.md), sections 5 and 6; `examples/model_study/results.jsonl`). |
 | `cap_blocks` | 400 | largest number of DMC blocks per point, and the length of a final run. Used with `[qmc] mode = fixed`; in the other modes the pilot runs set this number from `sigma_target`. |
 
 Small molecules have small DMC error bars, so a tighter tolerance is affordable for them
@@ -249,6 +291,13 @@ Tests of a wrong starting geometry. Leave these keys at their defaults for a nor
 - `move_surrogate = yes` (default) moves the surrogate with the start: the surrogate then calls the
   wrong start its own minimum (right shape, wrong place), and only the DMC energies know where the
   minimum is.
+
+### `[machine]` and `[report]`
+
+| Key | Default | Meaning |
+|---|---|---|
+| `[machine] profile` | `example_slurm` | name of the machine profile (section 2), or a path to one. The default is the example profile, whose paths are placeholders: write the name of your own profile here. |
+| `[report] gif` | `yes` | `yes`: the report writes the animations of `results/gifs/`; `no`: no animations |
 
 ## 4. Commands
 

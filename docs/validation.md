@@ -6,9 +6,11 @@ gives the results of the runs and the defects that the runs found.
 
 The unit tests (`tests/`) need no cluster program: `python -m unittest discover -s tests`.
 
-All runs on real molecules were made on 2026-11-22 and 2026-11-23 on a SLURM cluster with ORCA
-6.1.0, PySCF 2.1.1, QMCPACK 4.1.9 (legacy drivers), Python 3.9.21, numpy 1.26.4 and matplotlib
-3.7.1. A QMC job used 32 cores.
+All runs on real molecules in this file, except the example runs of version 0.1.0, were made on
+2026-11-22 and 2026-11-23 on a SLURM cluster with ORCA 6.1.0, PySCF 2.1.1, QMCPACK 4.1.9 (legacy
+drivers), Python 3.9.21, numpy 1.26.4 and matplotlib 3.7.1. A QMC job used 32 cores. The example
+runs of version 0.1.0 were made on 2026-11-25 and 2026-11-26. Limit 6 of section 6 and section 10
+cite them, and [examples/README.md](../examples/README.md) gives their program versions.
 
 **Which version of the code was tested.** The package changed during these tests, because the
 tests found defects (sections 8 and 9). "Final package" below means the version of the code that
@@ -18,24 +20,32 @@ this repository is newer: it adds path images as search targets and the stage wi
 multi-determinant trial wave function ([multireference.md](multireference.md)). The modules of the
 search methods (`src/montepass/search/`) differ from the final package only in comments.
 
-Every run started from an input file and geometry files only. One run stopped with the status
-`NEEDS_ATTENTION` (defect 10 below) and was continued with the command `retry`. No other
-calculation was started, repaired or analysed by hand.
+Every run of the workflow started from an input file and geometry files only. One run stopped with
+the status `NEEDS_ATTENTION` (defect 10 below) and was continued with the command `retry`. No other
+calculation of these runs was started or repaired by hand. Two results of section 6 do not come
+from a run of the workflow: the plain DMC slopes of limit 2 were computed by hand from the block
+energies of one run, and the follow-up test of limit 6 was made with a separate script that ran DMC
+series with the QMC engine of the package.
 
 ## 1. Overview
 
 The energy column is the DMC energy of the final geometry minus that of the starting geometry,
 each from two full-length runs. A negative number means that the search lowered the energy.
 
-**Runs with the final package**
+**Runs with the final package** (the `classic` row: see the note below the table)
 
 | system | start | method and DMC settings | result | DMC energy, final minus start (kcal/mol) | search blocks | core-hours | section |
 |---|---|---|---|---|---|---|---|
-| water, ammonia, HCN, formaldehyde, ethylene: 17 runs | every atom moved at random by 0, 0.05, 0.10 or 0.20 angstrom | `dense-v2`; settings chosen by the pilot runs | 17 of 17 `CONVERGED`, 1 to 7 scan iterations | -395.90 to +0.41 | 49,698 | 1,725 | 6 |
-| water (3 starts) and ammonia (2 starts) | every atom moved at random by 0.10 or 0.20 angstrom | `dense-v2`; time step 0.005 Ha^-1 fixed | 5 of 5 `CONVERGED`, 3 to 7 scan iterations | -395.97 to -11.05 | 17,933 | 788 | 5 |
+| water, ammonia, HCN, formaldehyde, ethylene: 17 runs | every atom moved at random; root mean square displacement per atom 0, 0.05, 0.10 or 0.20 angstrom | `dense-v2`; settings chosen by the pilot runs | 17 of 17 `CONVERGED`, 1 to 7 scan iterations | -395.90 to +0.41 | 49,698 | 1,725 | 6 |
+| water (3 starts) and ammonia (2 starts) | every atom moved at random; root mean square displacement per atom 0.10 or 0.20 angstrom | `dense-v2`; time step 0.005 Ha^-1 fixed | 5 of 5 `CONVERGED`, 3 to 7 scan iterations | -395.97 to -11.05 | 17,933 | 788 | 5 |
 | the same 5 starts | the same | `classic`; the same DMC settings | all 5 ended after the 4 fixed iterations; 2 of the 5 did not reach the minimum | -165.45 to -10.92 | 42,032 | 1,452 | 5 |
 | ammonia inversion: reactant, saddle | B3LYP geometries of the path | `dense-v2`; pilot runs (time step 0.02 Ha^-1) | `CONVERGED` (2 iterations), `CONVERGED` (2) | +0.32 +/- 0.22, -0.11 +/- 0.22 | 922, 747 | 11.8, 10.8 | 3 |
 | HCN to HNC: HCN, saddle, HNC | B3LYP geometries of the path | `dense-v2`; pilot runs (time step 0.005 Ha^-1) | `CONVERGED` (1 iteration), `CONVERGED` (3), `CONVERGED` (1) | +0.45 +/- 0.22, +0.48 +/- 0.21, +0.11 +/- 0.20 | 362, 5,036, 707 | 45.9, 235.2, 58.8 | 4 |
+
+The 5 `classic` runs started on 2026-11-22 between 15:35 and 15:42, before the final package was made
+at 16:37. Each run used the copy of the package that existed when it started. In that copy the module
+of the classic search (`search/classic.py`) was the same as in the final package, and the other
+differences of that copy did not change these runs.
 
 **Runs with earlier versions of the package** (2026-11-22, before the final package). The rules
 changed between these runs; sections 8 and 9 list the changes. The time is the start of the run.
@@ -50,12 +60,17 @@ changed between these runs; sections 8 and 9 list the changes. The time is the s
 | HCN to HNC | second rules (11:13) | HCN and HNC `CONVERGED`, saddle `NOT_CONVERGED` | 4 |
 | HCN to HNC | rules of 13:39 | all 3 `CONVERGED` (the saddle after 2 iterations); barrier changes +0.24 +/- 0.29 and +0.06 +/- 0.29 | 4 |
 | water, start moved by 0.10 angstrom along the symmetric stretch | `classic` (10:45), `dense-v2` and `auto` (10:59) | all 3 recover the 10 kcal/mol of the start | 5 |
+| water, start moved by 0.10 angstrom along the symmetric stretch | `dense-v1` (10:45) | `NOT_CONVERGED` after 10 iterations (remaining-energy bound of protocol v1: 0.051 kcal/mol); final minus start -9.92 +/- 0.25 kcal/mol, from final DMC runs that had not all ended when the report was written | - |
+| water, start moved by 0.25 angstrom along the symmetric stretch | `classic` (13:47) | ended after its fixed number of 4 iterations; audit `UNRESOLVED` in all 3 directions; final minus start -43.89 +/- 0.16 | - |
+| water, start moved by 0.25 angstrom along the symmetric stretch | `dense-v2` (13:46) | `NOT_CONVERGED` after 5 iterations (joint bound 0.023 against the target 0.02); final minus start -43.68 +/- 0.21 | - |
+| water, start moved by 0.25 angstrom along the symmetric stretch | `dense-v1` (13:47) | `NOT_CONVERGED` after 10 iterations (remaining-energy bound of protocol v1: 6.537 kcal/mol); the centre of iteration 3 was 40.56 +/- 0.21 kcal/mol below the start, and in each of the 7 later iterations the centre energy rose, so the search moved away from the minimum; final minus start -18.59 +/- 0.21, from final DMC runs that had not all ended when the report was written | - |
 
+The last 4 rows ended on 2026-11-23. Their numbers come from the file `results/summary.md` of each run.
 Runs that are not in the tables include runs that were stopped before they finished and were started
 again (after the repair of a defect, after the code review, or in another batch queue; for the
-systems of this file their second runs are in the tables), and 4 runs of the shifted water start with an earlier version (protocol v1
-at 0.10 angstrom; the three methods at 0.25 angstrom), which had not finished when this record was
-written.
+systems of this file their second runs are in the tables), the HCN tests of limit 6 in section 6,
+the example runs of version 0.1.0 ([examples/README.md](../examples/README.md)), and other runs
+that this file does not report (section 10).
 
 **Random numbers of repeated runs.** The random seeds of a QMC run are computed from the name of
 its point (for example `geometry/it1/centre`). The input file of the tested version has no option
@@ -98,8 +113,8 @@ independently. The energy that this step gains is below the error bar of the two
 not move. For comparison, a fit to rotation-vibration spectra gives an equilibrium O-H distance of
 0.9578 angstrom and an angle of 104.54 degrees (P. Jensen and co-workers, "A refined potential
 energy surface for the electronic ground state of the water molecule", 1994; the numbers were taken
-from the abstract). The B3LYP bond is 0.0036 angstrom longer than that value, and the two DMC bonds
-are 0.0030 and 0.0032 angstrom shorter, which is 1.7 and 1.5 of their standard errors. The
+from the abstract). The B3LYP bond is 0.00365 angstrom longer than that value, and the two DMC bonds
+are 0.00290 and 0.00313 angstrom shorter, which is 1.6 and 1.4 of their standard errors. The
 antisymmetric stretch has a slope of zero by symmetry and got 1 scan point in place of 2, so a scan
 of water has 5 points and the centre.
 
@@ -253,12 +268,14 @@ expensive. The classic run is the one that stopped with `NEEDS_ATTENTION` (defec
 continued with `retry`. The first runs of `dense-v2` and `auto` were stopped when defect 4 was
 found; the rows show the runs after the repair.
 
-**Every atom moved at random: the classic line search against the dense scan** (final package).
+**Every atom moved at random: the classic line search against the dense scan** (the dense scan with
+the final package; the classic search with an earlier copy of the package whose module
+`search/classic.py` is the same as in the final package: see the note below the table of section 1).
 Input of a run: the geometry file, `random_rms`, `random_seed`, the method, and fixed DMC settings
 for both methods (`[qmc] mode = fixed`, time step 0.005 Ha^-1, 2,048 walkers, `cap_blocks = 400`,
-`eps_total = 0.1` kcal/mol). The two methods start from the same geometry. The columns "above the
-reference geometry" are the B3LYP energy of a geometry minus that of the final geometry of the
-reference run of the molecule (section 6); this energy has no statistical noise.
+`eps_total = 0.1` kcal/mol). The two methods start from the same geometry. The columns "above the reference geometry" are the B3LYP energy of a geometry minus that
+of the final geometry of the reference run of the molecule (section 6); this energy has no
+statistical noise.
 
 | molecule, displacement (seed) | method | status | scan iterations | start above the reference geometry (kcal/mol) | final above the reference geometry (kcal/mol) | DMC energy, final minus start (kcal/mol) | search blocks | core-hours, all |
 |---|---|---|---|---|---|---|---|---|
@@ -278,9 +295,10 @@ DMC energy of the final geometry, classic minus dense scan (kcal/mol), in the or
 
 Reading.
 
-1. From the 3 starts that are up to 55 kcal/mol above the minimum both methods reach the minimum,
-   and their final DMC energies agree within 1.2 standard errors. The dense scan needs 2.3 to 5.0
-   times fewer search blocks and 1.9 to 3.3 times fewer core-hours.
+1. From the 3 starts that are 9.9 to 55 kcal/mol above the reference geometry, both methods end
+   within 0.06 kcal/mol (B3LYP energy) of the reference geometry, and their final DMC energies agree
+   within 1.3 standard errors (ratios 1.11, 0.68 and 1.24, from the unrounded energies). The dense
+   scan needs 2.3 to 5.0 times fewer search blocks and 1.9 to 3.3 times fewer core-hours.
 2. From the 2 starts at 148 and 395 kcal/mol the classic search does not reach the minimum: it ends
    4.4 and 249 kcal/mol above the reference geometry, and its final DMC energy is 3.71 +/- 0.13 and
    230.53 +/- 0.14 kcal/mol above that of the dense scan. The dense scan ends within 0.02 kcal/mol
@@ -393,7 +411,8 @@ mirror image is allowed). The 17 runs used 49,698 search blocks and 1,725 core-h
    (weighted mean -0.26 +/- 0.09; they share 4 reference energies).
 4. **The test moves the surrogate with the start.** The test therefore checks a surrogate minimum at
    the wrong place with the right shape. A surrogate with the wrong shape was tested on model
-   surfaces only (section 7 and [protocols.md](protocols.md), section 5).
+   surfaces (section 7 and [protocols.md](protocols.md), section 5); this file reports no test
+   with real DMC in which the surrogate was given a wrong shape on purpose.
 5. **Queue handling.** During the test a helper script moved waiting jobs between two batch queues
    of the cluster. The script edited no file of a run and submitted no calculation.
 6. **With a tighter tolerance the cost at a good geometry is larger than the tolerance, and HCN
@@ -404,9 +423,27 @@ mirror image is allowed). The 17 runs used 49,698 search blocks and 1,725 core-h
    larger tolerance. For HCN the two runs with the final package agree: +0.41 +/- 0.19 (reference
    run of this section) and +0.45 +/- 0.22 (section 4), together +0.43 +/- 0.14 kcal/mol, 3.0
    standard errors above zero, while the bounds of the two searches were 0.037 and 0.038 kcal/mol.
-   These 2 runs are evidence that for HCN the bound is too optimistic and that the search makes a
-   good geometry slightly worse. The cause was not found. Runs of HCN with earlier versions gave
-   -0.14 +/- 0.21 and +0.12 +/- 0.19.
+   Runs of HCN with earlier versions gave -0.14 +/- 0.21 and +0.12 +/- 0.19. Two later tests of HCN
+   (2026-11-23) did not settle whether the search makes this good geometry slightly worse:
+   - 8 repeat runs from the B3LYP minimum of HCN, with the DMC settings that the pilot runs of
+     section 4 chose (time step 0.005 Ha^-1, held fixed) and 8 different random seeds. All 8 ended as
+     `CONVERGED` after 1 scan iteration, and in all 8 the final geometry was higher in DMC energy
+     than the start: weighted mean +0.26 +/- 0.07 kcal/mol. These runs shifted the random seeds with
+     an input option that version 0.1.0 does not have.
+   - A follow-up test ran 96 new DMC series with new random seeds. A separate script, not the
+     workflow, ran them with the QMC engine of the package. 64 of the series were at the start
+     geometry and at the 8 final geometries of these repeat runs. The other 32 were at two
+     geometries near the start: one moved by 0.006 angstrom along a bend direction, and one moved by
+     0.0025 angstrom along a stretch direction. Final geometries minus start: -0.02 +/- 0.05
+     kcal/mol. The rise was not seen again.
+
+   The cause of the rise in the earlier runs was not found. The run of `examples/hcn_isomerization`
+   with version 0.1.0 on 2026-11-25 ([examples/README.md](../examples/README.md)) gave +0.02 +/- 0.20
+   kcal/mol for HCN (bound 0.035). That run is not an independent repeat at the starting geometries:
+   it has the input of section 4, and the random seeds come from the point names, so its DMC
+   energies at the 3 starting geometries equal those of the run of section 4 to the last printed
+   digit. A second run of the example on 2026-11-26, in which the pilot runs chose the time step
+   0.01 Ha^-1, gave +0.08 +/- 0.21 kcal/mol for HCN (bound 0.020).
 
 ## 7. Tests on model surfaces
 
@@ -495,18 +532,20 @@ surrogate, had no unit test. The module now has 9: the job script is run with a 
 (exact Hessian of a quadratic function, continuation after a stop), and the handling of the batch
 jobs is tested with a recorded batch system.
 
-## 10. What was not tested
+## 10. What was not tested, and what this file does not report
 
 - Open-shell molecules, charged molecules, elements beyond the second row, and other pseudopotentials than ccECP.
 - A batch system other than SLURM. The class `LocalScheduler` runs scripts on one computer and was used only in unit tests.
 - The batched QMCPACK drivers. The inputs use the legacy drivers.
 - ORCA 5: the input writers and readers have unit tests with ORCA 5.0.3 files, but every complete run used ORCA 6.1.0.
-- A complete search with protocol v2 on a molecule larger than 6 atoms.
+- A complete search with protocol v2 on a molecule larger than 6 atoms: not reported in this file.
 - `[qmc] mode = iterative` on a real molecule.
-- A path whose search needs more than 3 coordinates.
+- A path whose search needs more than 3 coordinates: not reported in this file.
 - The automatic repeat of a slow run: it has unit tests, and no slow run appeared after it was added.
 - The command `retry` for a failed ORCA or PySCF job: it was used once, for a failed QMC point.
 - The two additions to the code after the final package, path images as search targets and the
   multi-determinant trial wave function ([multireference.md](multireference.md)), were not part of
   these runs. Their unit tests are in `tests/test_workflow_model.py`, `tests/test_multidet.py` and
-  `tests/test_trial_stage.py`.
+  `tests/test_trial_stage.py`. The multi-determinant stage also ran with real programs (Quantum
+  Package 2 and QMCPACK) in the example `examples/water_multidet` with version 0.1.0, on 2026-11-25 and
+  on 2026-11-26 ([examples/README.md](../examples/README.md)).

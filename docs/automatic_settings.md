@@ -1,8 +1,9 @@
 # How the QMC settings are chosen
 
 A DMC run needs a time step, a walker count, a block length and a number of blocks. The stage
-`autotune` chooses them from short pilot runs of the molecule itself, so that the user does not
-need experience with similar systems. Every chosen value is written to
+`autotune` chooses the time step, the block length and the number of blocks from short pilot runs
+of the molecule itself, so that the user does not need experience with similar systems. The walker
+count is `[qmc] walkers` (section 3). Every chosen value is written to
 `work/autotune/qmc_settings.json` together with the measurement behind it, and the report shows a
 table of them.
 
@@ -12,7 +13,7 @@ Three modes (`[qmc] mode`):
 |---|---|
 | `auto` | One round of pilot runs, then the rules below. |
 | `iterative` | As `auto`. If a check fails, the affected pilot runs are repeated with a changed setting, at most `max_repeats` times. |
-| `fixed` | No pilot run. The values of the input file are checked for consistency and used as they are. |
+| `fixed` | No pilot run. The values of the input file are checked for consistency and used as they are, except that the walker count is rounded up to a multiple of the MPI ranks. |
 
 ## 1. The pilot runs
 
@@ -35,7 +36,7 @@ A candidate time step is allowed if all of these hold:
 | R1 | mean DMC acceptance | at least 0.99 |
 | R2 | DMC variance / VMC variance | at most 1.10 |
 | R3 | relative spread of the walker population | at most 5 % at 2048 walkers |
-| R4 | predicted time-step bias of an energy difference, `0.15 |k_E| tau` | at most `sigma_target` |
+| R4 | predicted time-step bias of an energy difference, `0.15 \|k_E\| tau` | at most `sigma_target` |
 
 `k_E` is the measured slope of the total DMC energy against the time step. The factor 0.15 is the
 measured ratio between the time-step slope of an energy difference of two nearby geometries and
@@ -50,6 +51,17 @@ The largest allowed candidate is taken, because the cost of a run is proportiona
 A rule whose input was not measured is recorded as "not checked" and does not exclude a
 candidate.
 
+If no candidate is allowed and the smallest one (0.005) fails R4 only, the time step is the
+largest one that R4 allows, `sigma_target / (0.15 |k_E|)` (rule F6, with the same `|k_E|` as R4),
+rounded down to 2 significant digits. R1 to R3 are then assumed to hold below 0.005. This rule
+gave the time step 0.0036 of one run of the acceptance test ([validation.md](validation.md),
+section 6). If the limit `sigma_target / (0.15 |k_E|)`, before the rounding, is below `tau_99 / 9`
+(`tau_99` is the time step at which the acceptance is predicted to be 0.99), the time-step choice
+gets the flag `extrapolate`, and the pilot writes a warning (in the report and in
+`qmc_settings.json`): runs at two time steps with an extrapolation of every energy difference would
+cost less. The package does not make such runs itself. If the smallest candidate fails another rule, no time step is chosen, and the message
+names the rule that failed.
+
 ## 3. Block length, blocks and walkers
 
 With the variance `V`, the effective correlation time `T_c` (defined by
@@ -59,12 +71,14 @@ With the variance `V`, the effective correlation time `T_c` (defined by
     imaginary time needed      T = 2 T_c V / (N_w sigma^2)
     blocks                     B = n_discard + 1.2 T / T_b
 
-- A block is 2.5 Ha^-1 long (`steps = 2.5 / tau`), which is 20 to 30 correlation times.
+- A block is 2.5 Ha^-1 long (`steps = 2.5 / tau`), which is 16 to 22 times the measured `T_c` of
+  section 6 (0.114 to 0.158 Ha^-1).
 - The first 10 Ha^-1 of a run are discarded (`warmup_steps = 10 / tau`), and the analysis discards
   further start-up blocks if the data ask for it.
 - The product `2 T_c V` is not guessed: it is taken from the error bar of the pilot run.
 - A run keeps at least 64 blocks, so that its error bar can be estimated.
-- The walker target is 2048, rounded up to a multiple of the MPI ranks.
+- The walker count is `[qmc] walkers` (default 2048), rounded up to a multiple of the MPI ranks.
+  The pilot runs do not change it.
 - `sigma_target` (default 0.2 kcal/mol) is the wanted error bar of the final energy of one
   geometry. The number of blocks of a final run follows from it. Scan points may use fewer blocks:
   the search stops them when its own precision target is reached.
@@ -135,6 +149,15 @@ Five other pilots of these molecules and of HCN chose 0.0016 to 0.005, because a
 check M6 excluded their run at 0.02. With the slope from 2 time steps the error of the slope was
 70 to 175, and the rule `|k_E| + 2 sigma` then asked for a smaller time step. Their stored traces, analysed again with the corrected check,
 give 0.005 for water (3 pilots) and HCN, and 0.01 for ammonia.
+
+Repeats with the current check do not always give the same choice. In the acceptance test
+([validation.md](validation.md), section 6) every run made its own pilot at its own starting
+geometry. In the order "reference run, displacement 0.05, 0.10, 0.20 angstrom" the pilots chose:
+water 0.005, 0.01, 0.005, 0.01; ammonia 0.02, 0.01, 0.01, 0.01; HCN 0.01, 0.0036, 0.01;
+formaldehyde 0.005, 0.01, 0.005; ethylene 0.01, 0.01, 0.01. So 7 of the 12 displaced runs chose
+another time step than the reference run of their molecule. At the B3LYP geometry of HCN, the
+reference run chose 0.01; the pilots of the HCN path chose 0.005 (validation.md, section 4, and
+`examples/hcn_isomerization` on 2026-11-25) and 0.01 (the same example on 2026-11-26).
 
 ## 8. Limits
 

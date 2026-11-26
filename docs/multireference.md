@@ -1,4 +1,4 @@
-# DMC energies with several determinants (`[trial] kind = multidet`)
+# DMC energies with several determinants (`[trial] kind = multidet`, experimental)
 
 This page describes the option that computes DMC energies with a multi-determinant trial wave function
 from Quantum Package 2 (QP2). The user guide (`docs/user_guide.md`, sections 2, 3 and 6) gives the
@@ -11,7 +11,8 @@ The geometry search always uses one Slater determinant with Kohn-Sham orbitals f
 does not change the search. It adds one stage, `trial`, between the stages `search` and `report`. The
 stage starts when the search of every target has ended. For every target it takes two geometries:
 the start geometry and the final geometry of the search. For every geometry and every cutoff of the
-input it runs `series` independent DMC runs with a multi-determinant trial wave function.
+input it runs `series` independent DMC runs with a multi-determinant trial wave function. The stage is
+experimental: section 9 gives the measured energies and the limits.
 
 The trial wave function of one cutoff is made in this order:
 
@@ -274,10 +275,16 @@ section 6).
 - The molecule must have charge 0 and multiplicity 1 (closed shell). One electronic state.
 - The user chooses `n_det_max` and the cutoffs. `n_det_max = auto` and `cutoff = auto` are not built.
 - The coefficients of the determinants are not optimized with the Jastrow factor.
-- Measured (examples/water_multidet, 2026-11-25): at the start and at the final geometry of water, the trial wave
-  function cut at 1e-3 (50 and 42 determinants) gave DMC energies 1.53 +/- 0.31 and 1.93 +/- 0.28 millihartree
-  ABOVE those of the single RHF determinant of QP2 (same orbitals, same Jastrow form). The engine tests saw the same
-  for water and ammonia. The cause was not investigated, so treat the energies of this stage as experimental.
+- Measured (examples/water_multidet, version 0.1.0): at the start and at the final geometry of water, the trial wave
+  function cut at 1e-3 gave DMC energies ABOVE those of the single RHF determinant of QP2 (same orbitals, same
+  Jastrow form): 1.53 +/- 0.31 and 1.93 +/- 0.28 millihartree in the run of 2026-11-25 (50 and 42 determinants), and
+  2.09 +/- 0.38 and 2.21 +/- 0.42 millihartree in the run of 2026-11-26 (55 and 42 determinants). The engine tests
+  (development code; started on 2026-11-24; 120 blocks of 100 steps, time step 0.005 Ha^-1) gave, against the
+  single RHF determinant: with the cutoff 1e-3, water +2.6 +/- 0.8 (55 determinants), ammonia +1.4 +/- 0.9 (178) and
+  HCN -4.9 +/- 1.1 (186) millihartree; with the cutoff 1e-4, water -2.9 +/- 0.8 (2,092), ammonia -3.1 +/- 1.0
+  (3,602) and HCN -12.7 +/- 1.2 (4,888) millihartree. So only the short expansions of the cutoff 1e-3 of water and
+  ammonia gave higher energies (ammonia by 1.5 standard errors). The cause was not investigated, so treat the
+  energies of this stage as experimental.
 - The orbitals are the RHF orbitals of QP2; natural orbitals are not used.
 - The search never uses these wave functions. The energies are computed after the geometry is fixed.
 - A wave function that exists already can be used only through the engine setting `import_ezfio` (a
