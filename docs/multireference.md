@@ -114,7 +114,6 @@ cutoffs 1e-3 and 5e-4 are a bad choice for water and ammonia.
 |---|---|---|
 | `[setup.qp2]` | `lines` | shell lines at the start of every QP2 job. The first line must be `set +u` (the rc file of QP2 reads variables that are not set). Then the modules that QP2 was built with. The last line: `source /path/to/qp2/quantum_package.rc`. |
 | `[job.qp2]` | `nodes`, `tasks`, `cpus_per_task`, `mem`, `time` | batch options of a QP2 job. `tasks` must be 1. `cpus_per_task` is the number of threads of QP2. `cpus_per_task`, `mem` and `time` must be set. `time` must be more than 15 minutes, because every step ends 10 minutes before the time limit of its job. |
-| `[executables]` | `determinants_tools` | path of `utils/determinants_tools.py` of the QMCPACK source tree. |
 | `[executables]` | `qp2_python_bin` | folder of a Python with `h5py`. The export program of QP2 gets it first on its PATH. May be empty if the Python of `[setup.qp2]` has `h5py`. |
 | `[job.qmc]` | `time_multidet` | time limit of the QMC job of a multi-determinant point. Default: `time`. |
 | `[job.qmc]` | `mem_multidet` | memory of the QMC job of a multi-determinant point. Default: `mem`. |
@@ -168,13 +167,27 @@ When the cut job has ended, the engine reads its results and checks them (sectio
 | Step | What runs |
 |---|---|
 | `scf` | the PySCF step of the package. For a multi-determinant point it also records the RHF energy of PySCF (`e_rhf` in `system.json`). |
-| `mdc4q` | the h5 file of QP2 is copied to `trial.h5`; `determinants_tools.py --transform` converts the determinants; `convert4qmc -orbitals trial.h5 -multidet trial.h5` writes the QMCPACK files; then the check `check-mdc4q` |
+| `mdc4q` | the h5 file of QP2 is copied to `trial.h5`. For a cut of more than 1 determinant, the package writes the determinant strings of `trial.h5` again as unsigned integers with the same bits (command `unsigned-dets`, see below), and `convert4qmc -orbitals trial.h5 -multidet trial.h5` writes the QMCPACK files. For `hf` (1 determinant), `convert4qmc -orbitals trial.h5` writes them, with no conversion. Then the check `check-mdc4q` runs. |
 | `mdvmc` | VMC with the determinants alone (no Jastrow factor), in one or more runs, until the check `check-mdvmc` passes or fails |
 | `opt` | Jastrow optimization; the coefficients of the determinants stay fixed |
 | `dmc` | DMC |
 
 A further series (`series` 2, 3, ...) runs only DMC. It reads `trial.h5` and the determinant block of
 its series-1 point, and gets random numbers of its own.
+
+The determinant strings. QP2 writes the occupied orbitals of every determinant as bit strings, one
+signed 64-bit integer for every 64 orbitals. An electron in orbital 64, 128, 192, ... (QP2 counts orbitals
+from 1) sets the highest bit of one of these integers, so QP2 writes that integer as a negative number.
+QMCPACK reads the strings as unsigned integers. Version 0.2.1 of the package converts the strings itself
+(`python -m montepass.engine.multidet unsigned-dets`): every integer keeps its bits, and only its type
+changes to unsigned (a file of the other byte order is first converted to the native byte order).
+Versions 0.1.0 and 0.2.0 called
+`utils/determinants_tools.py --transform` of the QMCPACK source tree for this step. With numpy 2 that
+script stops with `OverflowError: Python int too large to convert to C long` as soon as one integer is
+negative (its function `sanitize` adds 2**64 to a numpy int64). The error shows only for a wave
+function with an electron in one of these orbitals.
+Version 0.2.1 does not read the profile key `determinants_tools`; a profile that still has the key
+works as before.
 
 ## 4. The checks
 
@@ -300,7 +313,7 @@ and CIPSI again.
 | `truncate_wf_spin read a wave function of N determinants` | the cut was made from another parent than the recorded one | compute the QP2 calculations of the geometry again |
 | `step mdc4q: the RHF energy of QP2 ... differs from the RHF energy of PySCF` | the two programs do not describe the same molecule, basis or pseudopotentials | check `[trial] qp2_basis`, `qp2_pseudo` and `[qmc] basis`, `ecp` |
 | `step mdc4q: an atom of the QP2 export is` or `step mdc4q: the atoms of the QP2 export` | the atom order or the geometry of the export differs from the point | this points to an error of the package: keep the folders, and compare `geom.xyz` of the QP2 folder with `system.json` of the point |
-| `step mdc4q: the wave function file holds N determinant(s), QP2 printed M` | `convert4qmc` read another number of determinants | check the QMCPACK version and `determinants_tools.py` |
+| `step mdc4q: the wave function file holds N determinant(s), QP2 printed M` | `convert4qmc` read another number of determinants | check the QMCPACK version |
 | `step mdvmc: ... the difference is above 5 standard errors` | the VMC energy of the determinants is not the energy of QP2: wrong orbitals, a lost determinant, a wrong atom order or a wrong pseudopotential | look at `check_mdvmc.json` of the point |
 | `step mdvmc: ... no pass` after the last run | the difference stayed between the two limits in all allowed runs: it is small but not zero | look at `check_mdvmc.json` of the point (combined difference and error bar). `retry` gives the same verdict, because the finished runs are kept |
 | `determinant check: the QMCPACK output of the DMC run does not say` | a DMC run did not read all determinants | check the QMCPACK input of the point |

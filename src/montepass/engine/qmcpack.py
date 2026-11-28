@@ -594,8 +594,7 @@ def steps_script(steps: Sequence[str], project: str, blocks: int, limits: Dict[s
     ``limits`` gives the time limit of every step in seconds. ``launch`` is the prefix that starts
     QMCPACK in parallel. With ``write_dmc_input=False`` the DMC input file must exist already
     (further series of a geometry). ``md`` holds what the steps ``mdc4q`` and ``mdvmc`` need: the h5 file
-    that Quantum Package exported (``h5``), its number of determinants (``ndet``) and the command
-    ``determinants_tools``."""
+    that Quantum Package exported (``h5``) and its number of determinants (``ndet``)."""
     for step in steps:
         if step not in STEPS:
             raise ValueError("unknown step %r; allowed: %s" % (step, ", ".join(STEPS)))
@@ -638,7 +637,7 @@ def steps_script(steps: Sequence[str], project: str, blocks: int, limits: Dict[s
             "fi"]))
     if several:
         parts += MD.qmc_steps_text(steps, limits, launch, python=python, qmcpack=qmcpack, convert4qmc=convert4qmc,
-                                   determinants_tools=md["determinants_tools"], h5_source=md["h5"], ndet=int(md["ndet"]))
+                                   h5_source=md["h5"], ndet=int(md["ndet"]))
     if "opt" in steps:
         parts.append("\n".join([
             "if begin_step opt; then",
@@ -1097,8 +1096,7 @@ class QmcpackEngine(Engine):
                         exclude=p.get("exclude_nodes"), mem=self._job_mem(p))
         if p.get("trial") and p["series"] == 1:
             facts = p.get("trial_facts") or {}
-            common["md"] = {"h5": facts.get("h5", ""), "ndet": int(facts.get("n_det", 2)),
-                            "determinants_tools": m.executable("determinants_tools")}
+            common["md"] = {"h5": facts.get("h5", ""), "ndet": int(facts.get("n_det", 2))}
         return head + steps_script(p["steps"], limits=self._limits(p, "qmc"), write_dmc_input=p["series"] == 1, **common)
 
     def _write_start_file(self, p: dict, start_key: str) -> bool:

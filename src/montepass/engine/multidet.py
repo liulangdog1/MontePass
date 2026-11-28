@@ -9,7 +9,7 @@ determinants. This module holds everything of that chain that is not QMCPACK inp
         cut job      qp_run truncate_wf_spin on a copy  ->  qp_run print_energy  ->  qp_run save_for_qmcpack
     QMC job of the point (job kind ``qmc``; steps of :mod:`qmcpack`)
         scf     PySCF as for every point (``system.json``, surrogate energy, RHF energy for a comparison)
-        mdc4q   determinants_tools.py --transform, convert4qmc -multidet, check of the files
+        mdc4q   the determinant strings as unsigned integers (command unsigned-dets), convert4qmc -multidet, checks
         mdvmc   VMC run WITHOUT Jastrow factor; its energy must equal the QP2 energy of the same wave function
         opt     Jastrow optimization; the coefficients of the determinants stay fixed
         dmc     DMC
@@ -1670,8 +1670,7 @@ def md_vmc_input(system: dict, determinantset: str, pseudo_dir: str = "", seed: 
 
 
 def qmc_steps_text(steps: Sequence[str], limits: Dict[str, int], launch: str, python: str = "python", qmcpack: str = "qmcpack",
-                   convert4qmc: str = "convert4qmc", determinants_tools: str = "determinants_tools.py", h5_source: str = "",
-                   ndet: int = 2) -> List[str]:
+                   convert4qmc: str = "convert4qmc", h5_source: str = "", ndet: int = 2) -> List[str]:
     """Shell blocks of the steps ``mdc4q`` and ``mdvmc`` for the job script of a point (see ``steps_script`` of
     the engine, which supplies the shell functions used here). ``h5_source`` is the h5 file that QP2 exported,
     ``ndet`` the number of determinants that QP2 wrote into it (1 = the RHF determinant alone)."""
@@ -1682,9 +1681,8 @@ def qmc_steps_text(steps: Sequence[str], limits: Dict[str, int], launch: str, py
                  "    need_file trial_facts.json",
                  "    cp %s trial.h5 || fail_step \"RUN: the h5 file of QP2 could not be copied\"" % h5_source]
         if int(ndet) > 1:
-            lines += ["    # QP2 writes the determinants as signed numbers; QMCPACK needs unsigned ones",
-                      "    run_limited %d mdtransform.out - %s %s --transform -s trial.h5" % (limits["mdc4q"], python, determinants_tools),
-                      "    check_run",
+            lines += ["    # QP2 writes the determinant strings as signed numbers; QMCPACK needs unsigned ones with the same bits",
+                      "    md_package unsigned-dets",
                       "    run_limited %d mdc4q.out - %s -orbitals trial.h5 -prefix mdc4q -multidet trial.h5" % (limits["mdc4q"], convert4qmc)]
         else:
             lines += ["    run_limited %d mdc4q.out - %s -orbitals trial.h5 -prefix mdc4q" % (limits["mdc4q"], convert4qmc)]
@@ -1729,6 +1727,51 @@ def qmc_steps_text(steps: Sequence[str], limits: Dict[str, int], launch: str, py
     return parts
 
 
+# the groups of the determinant strings in the h5 file of QP2 (the names of older exports in second place)
+DET_GROUPS = (("MultiDet/CI_Alpha", "MultiDet/CI_0"), ("MultiDet/CI_Beta", "MultiDet/CI_1"))
+
+
+def unsigned_strings(strings) -> np.ndarray:
+    """The determinant strings of QP2 as QMCPACK reads them: the same bits as unsigned integers.
+
+    QP2 writes the bit string of every determinant as signed 64-bit integers, one integer for every 64 orbitals.
+    An electron in orbital 64, 128, 192, ... (QP2 counts orbitals from 1) sets the highest bit of one of these
+    integers, and QP2 writes that integer as a negative number. QMCPACK needs unsigned integers with the same bits.
+    Every integer keeps its bits; for a C-contiguous array of native byte order the result is a view of the same
+    bytes. This is the conversion of ``determinants_tools.py --transform`` of QMCPACK without its arithmetic,
+    which overflows with numpy 2 (``int64 + 2**64``). An array of the other byte order is first converted to the
+    native byte order with the same values. An unsigned C-contiguous array of native byte order is returned as it is."""
+    array = np.ascontiguousarray(strings)
+    if array.dtype.kind not in "iu":
+        raise ValueError("the determinant strings must be integers, not %s" % array.dtype)
+    if not array.dtype.isnative:                    # a file of another byte order: the same values, native bytes
+        array = array.astype(array.dtype.newbyteorder("="))
+    if array.dtype.kind == "u":
+        return array
+    return array.view(np.dtype("u%d" % array.dtype.itemsize))
+
+
+def unsigned_determinants(path: str) -> Dict[str, int]:
+    """Rewrite the determinant strings of the h5 file ``path`` as unsigned integers (:func:`unsigned_strings`).
+    Returns ``{group: number of negative integers that were converted}``. A file whose strings are unsigned
+    integers of native byte order already is not changed."""
+    import h5py                                     # imported here: only the QMC jobs of several determinants need it
+    out: Dict[str, int] = {}
+    with h5py.File(path, "a") as f:
+        for names in DET_GROUPS:
+            name = next((n for n in names if n in f), None)
+            if name is None:
+                raise ValueError("%s holds no group %s" % (path, " or ".join(names)))
+            data = f[name][...]
+            negative = int(np.count_nonzero(data < 0)) if data.dtype.kind == "i" else 0
+            new = unsigned_strings(data)
+            if new.dtype != data.dtype:
+                del f[name]
+                f.create_dataset(name, data=new)
+            out[name] = negative
+    return out
+
+
 MD_PACKAGE_FUNCTION = r'''
 # md_package COMMAND: a command of the module for several determinants. Exit code QUALITY_EXIT = a quality check failed.
 md_package() {
@@ -1738,7 +1781,7 @@ md_package() {
 }
 '''
 
-_COMMANDS = {"check-mdc4q": "check_mdc4q.json", "write-mdvmc": None, "check-mdvmc": "check_mdvmc.json"}
+_COMMANDS = {"unsigned-dets": None, "check-mdc4q": "check_mdc4q.json", "write-mdvmc": None, "check-mdvmc": "check_mdvmc.json"}
 
 
 def check_seed(first: Optional[int], run: int, ranks: int) -> Optional[int]:
@@ -1758,6 +1801,7 @@ def check_run_limit(max_runs: int, ranks: int) -> int:
 def main(argv: Optional[Sequence[str]] = None) -> int:
     """Commands that the job script of a point runs in the folder of the point.
 
+        python -m montepass.engine.multidet unsigned-dets   the determinant strings of trial.h5 as unsigned integers
         python -m montepass.engine.multidet check-mdc4q     files of convert4qmc against QP2 and the SCF
         python -m montepass.engine.multidet write-mdvmc     input of the next VMC run without Jastrow factor
         python -m montepass.engine.multidet check-mdvmc     the combined energy of all runs against the QP2 energy
@@ -1775,6 +1819,11 @@ def main(argv: Optional[Sequence[str]] = None) -> int:
     cfg = _read_json("qmc_settings.json") if os.path.exists("qmc_settings.json") else {}
     trial = copy.deepcopy(DEFAULT_TRIAL); trial.update(cfg.get("trial") or {})
 
+    if command == "unsigned-dets":
+        counts = unsigned_determinants("trial.h5")
+        print("determinant strings of trial.h5 are unsigned now; negative integers converted: %s"
+              % ", ".join("%s %d" % (name, n) for name, n in counts.items()))
+        return 0
     if command == "check-mdc4q":
         result = check_export(".", rhf_tolerance=float(trial["rhf_tolerance"]))
         _write_json(_COMMANDS[command], result)

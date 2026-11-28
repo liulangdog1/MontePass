@@ -2,7 +2,7 @@ cff-version: 1.2.0
 message: "If you use this software, please cite it as below."
 title: "MontePass: geometry and reaction-path optimization on the diffusion Monte Carlo energy surface"
 type: software
-version: 0.2.0
+version: 0.2.1
 authors:
   - family-names: Liu
     given-names: Yitian

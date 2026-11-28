@@ -771,8 +771,17 @@ class TestFailures(EngineCase):
         self.assertEqual(eng.read(key).state, FAILED)                # ... and the second failure is final
         self.assertEqual(eng.failed_keys(), [key])
         self.assertFalse(eng.retry("no/such/point"))
-        # a person repaired the cause and asks for a retry
+        # a person repaired the cause and asks for a retry. The repair can be in the code of the package: before the
+        # new job is submitted, the launch writes the job files again with the installed code (since version 0.1.0).
+        # Here a test puts an old script in place of job.sh; the submitted script must be the new one.
+        with open(self.path(key, "job.sh"), "w") as fh:
+            fh.write("#!/bin/bash\necho an old script\n")
         self.assertEqual(eng.retry_failed(), [key])
+        submitted = self.sched.submitted[2]["text"]
+        self.assertNotIn("an old script", submitted)
+        self.assertIn("begin_step opt", submitted)
+        with open(self.path(key, "job.sh")) as fh:
+            self.assertEqual(fh.read(), submitted)
         self.assertEqual(len(self.sched.submitted), 3)
         data = eng.read(key)
         self.assertEqual((data.state, data.meta["attempts"]), (QUEUED, 1))

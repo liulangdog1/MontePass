@@ -12,6 +12,7 @@ import os
 import shutil
 import subprocess
 import sys
+import tempfile
 import unittest
 
 import numpy as np
@@ -438,18 +439,82 @@ class TestScripts(unittest.TestCase):
 
     def test_steps_of_the_point_job(self):
         limits = {"mdc4q": 900, "mdvmc": 7200}
-        blocks = MD.qmc_steps_text(["mdc4q", "mdvmc"], limits, "mpirun -np 32", determinants_tools="/q/determinants_tools.py",
+        blocks = MD.qmc_steps_text(["mdc4q", "mdvmc"], limits, "mpirun -np 32",
                                    h5_source="/work/qp2/cut_c1e-03/export/QP2QMCPACK.h5", ndet=55)
         text = "\n".join(blocks)
         self.bash_accepts(text)
         self.assertIn("convert4qmc -orbitals trial.h5 -prefix mdc4q -multidet trial.h5", text)
         self.assertNotIn("-multidets", text)                           # the plural option gives 1 determinant with no message
-        self.assertIn("/q/determinants_tools.py --transform -s trial.h5", text)
-        self.assertLess(text.index("--transform"), text.index("-multidet trial.h5"))
+        # the package makes the determinant strings unsigned itself, before convert4qmc reads them
+        self.assertIn("md_package unsigned-dets", text)
+        self.assertLess(text.index("md_package unsigned-dets"), text.index("-multidet trial.h5"))
+        self.assertNotIn("determinants_tools", text)
         self.assertIn("cp /work/qp2/cut_c1e-03/export/QP2QMCPACK.h5 trial.h5", text)
         one = "\n".join(MD.qmc_steps_text(["mdc4q"], limits, "mpirun", h5_source="x.h5", ndet=1))
         self.assertNotIn("-multidet", one)
-        self.assertNotIn("--transform", one)
+        self.assertNotIn("unsigned-dets", one)
+
+    def test_unsigned_determinant_strings(self):
+        # 200 orbitals: 4 integers of 64 bits per string. An electron in orbital 64, 128 or 192 sets the highest bit
+        # of an integer, and QP2 writes that integer as a negative number
+        top = -(1 << 63)
+        signed = np.array([[7, 0, 0, 0], [7, top, 0, 0], [5, 0, top + 1, top], [-1, 3, 0, 0]], dtype=np.int64)
+        unsigned = MD.unsigned_strings(signed)
+        self.assertEqual(unsigned.dtype, np.uint64)
+        self.assertEqual(unsigned.shape, signed.shape)
+        self.assertEqual(unsigned.tobytes(), signed.tobytes())                    # no bit changes
+        # the values are those of the two's complement of determinants_tools.py --transform: s + 2**64 for s < 0
+        expected = [[int(s) + (1 << 64) if s < 0 else int(s) for s in row] for row in signed.tolist()]
+        self.assertEqual([[int(v) for v in row] for row in unsigned], expected)
+        # a file of the other byte order (h5py keeps the byte order of the file): the same values, native bytes
+        other = signed.astype(signed.dtype.newbyteorder("S"))
+        self.assertFalse(other.dtype.isnative)
+        swapped = MD.unsigned_strings(other)
+        self.assertTrue(swapped.dtype.isnative)
+        self.assertEqual(swapped.dtype.kind, "u")
+        self.assertEqual([[int(v) for v in row] for row in swapped], expected)
+        self.assertEqual([[int(v) for v in row] for row in MD.unsigned_strings(unsigned.astype(">u8"))], expected)
+        # a 1-D array (one word per determinant) is converted in the same way
+        self.assertEqual([int(v) for v in MD.unsigned_strings(signed[:, 1])], [row[1] for row in expected])
+        self.assertEqual(int(unsigned[1, 1]), 1 << 63)
+        self.assertEqual(int(unsigned[3, 0]), (1 << 64) - 1)
+        # unsigned strings stay as they are; other kinds are refused
+        self.assertIs(MD.unsigned_strings(unsigned), unsigned)
+        with self.assertRaises(ValueError):
+            MD.unsigned_strings(np.array([[1.0]]))
+        self.assertIn("unsigned-dets", MD._COMMANDS)
+
+    def test_unsigned_determinants_of_an_h5_file(self):
+        try:
+            import h5py
+        except ImportError:
+            self.skipTest("h5py is not installed (the QMC jobs of several determinants need it)")
+        top = -(1 << 63)
+        with tempfile.TemporaryDirectory() as tmp:
+            path = os.path.join(tmp, "trial.h5")
+            alpha = np.array([[7, top], [11, 0]], dtype=np.int64)
+            beta = np.array([[7, 0], [7, top + 5]], dtype=np.int64)
+            with h5py.File(path, "w") as f:
+                f.create_dataset("MultiDet/CI_Alpha", data=alpha)
+                f.create_dataset("MultiDet/CI_Beta", data=beta)
+                f.create_dataset("MultiDet/Coeff", data=np.array([0.9, -0.1]))
+            self.assertEqual(MD.unsigned_determinants(path), {"MultiDet/CI_Alpha": 1, "MultiDet/CI_Beta": 1})
+            with h5py.File(path, "r") as f:
+                self.assertEqual(f["MultiDet/CI_Alpha"].dtype, np.uint64)
+                self.assertEqual(f["MultiDet/CI_Alpha"][...].tobytes(), alpha.tobytes())
+                self.assertEqual(f["MultiDet/CI_Beta"][...].tobytes(), beta.tobytes())
+                self.assertEqual(list(f["MultiDet/Coeff"][...]), [0.9, -0.1])     # the rest of the file is kept
+            self.assertEqual(MD.unsigned_determinants(path), {"MultiDet/CI_Alpha": 0, "MultiDet/CI_Beta": 0})
+            # the group names of older exports
+            old = os.path.join(tmp, "old.h5")
+            with h5py.File(old, "w") as f:
+                f.create_dataset("MultiDet/CI_0", data=alpha)
+                f.create_dataset("MultiDet/CI_1", data=beta)
+            self.assertEqual(MD.unsigned_determinants(old), {"MultiDet/CI_0": 1, "MultiDet/CI_1": 1})
+            with h5py.File(os.path.join(tmp, "none.h5"), "w") as f:
+                f.create_dataset("MultiDet/Coeff", data=np.array([1.0]))
+            with self.assertRaises(ValueError):
+                MD.unsigned_determinants(os.path.join(tmp, "none.h5"))
 
 
 # ===================================================================================== the Quantum Package jobs of one geometry
@@ -459,6 +524,8 @@ class Qp2Case(TE.EngineCase):
         with open(self.profile, "a") as fh:
             fh.write(QP2_PROFILE)
             fh.write("\n[executables2]\n")
+        # the key determinants_tools is not read since version 0.2.1; it stays here on purpose: a profile of an earlier
+        # version must still work (the job script then must not call the script of QMCPACK)
         text = read(self.profile).replace("convert4qmc = convert4qmc",
                                                  "convert4qmc = convert4qmc\ndeterminants_tools = /q/determinants_tools.py")
         with open(self.profile, "w") as fh:
@@ -1049,10 +1116,10 @@ class TestEnginePoint(Qp2Case):
         self.assertTrue(job["script"].endswith("trial/min/start/job.sh"))
         text = job["text"]
         for word in ("begin_step scf", "begin_step mdc4q", "begin_step mdvmc", "begin_step opt", "begin_step dmc",
-                     "md_package()", "-multidet trial.h5", "/q/determinants_tools.py --transform -s trial.h5",
+                     "md_package()", "-multidet trial.h5", "md_package unsigned-dets",
                      os.path.join(self.folder, "cut_c1e-03", "export", "QP2QMCPACK.h5")):
             self.assertIn(word, text)
-        for word in ("begin_step c4q", "begin_step vmc0", "-orbitals scf.h5"):
+        for word in ("begin_step c4q", "begin_step vmc0", "-orbitals scf.h5", "determinants_tools", "--transform"):
             self.assertNotIn(word, text)
         self.assertLess(text.index("begin_step mdvmc"), text.index("begin_step opt"))    # the check comes before the Jastrow
         res = subprocess.run(["bash", "-n", job["script"]], capture_output=True, text=True)

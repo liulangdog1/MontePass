@@ -9,7 +9,7 @@
 | PySCF (with h5py) | trial orbitals for QMC, surrogate gradients and Hessians | cluster |
 | QMCPACK with `convert4qmc`, and `PyscfToQmcpack.py` from its source tree | Jastrow optimization, VMC, DMC | cluster |
 | ccECP pseudopotential files `<Element>.ccECP.xml` | QMCPACK | cluster |
-| Quantum Package 2, and `utils/determinants_tools.py` from the QMCPACK source tree | only for `[trial] kind = multidet` (an experimental stage): trial wave functions with several determinants | cluster |
+| Quantum Package 2 | only for `[trial] kind = multidet` (an experimental stage): trial wave functions with several determinants | cluster |
 
 The package does not need a workflow manager. It writes the input of every program itself and starts
 every calculation as a batch job.
@@ -33,6 +33,10 @@ Tested versions:
   unit tests of the final code passed. The examples `water_multidet` and `ammonia_inversion` ran
   with `[trial] cutoff = auto` and the ladder 2.5e-4, 1e-4 (the default of that day), with the
   code of that day before its last corrections ([examples/README.md](../examples/README.md)).
+- The code of version 0.2.1 in the same environment of the cluster on 2026-11-27: all 634 unit tests
+  passed (an archive of the working tree, with its `src` folder first on `PYTHONPATH`). The
+  development computer (Python 3.9.6, without h5py, so 1 test is skipped) ran 3 test files:
+  `tests/test_multidet.py`, `tests/test_qmcpack_engine.py` and `tests/test_trial_stage.py`.
 - Cluster programs of the test runs: ORCA 6.1.0, QMCPACK 4.1.9 (a development build; the inputs that
   the package writes use the legacy drivers) and, for the stage with several determinants, Quantum
   Package 2.
@@ -87,7 +91,7 @@ section `[executables]` exists; with SLURM the sections `[slurm]`, `[job.scf]` a
 (with `scheduler = local` the section `[machine]`); and the pseudopotential folder exists. With
 `[trial] kind = multidet` the command also checks the keys for Quantum Package 2 (next part of this
 section). The command does not test the programs of `[executables]` (not the ORCA path, not the
-folder `pyscf_qmctools`, not the file `determinants_tools`) and does not run the lines of the
+folder `pyscf_qmctools`) and does not run the lines of the
 `[setup.*]` sections. A wrong path there shows only when the first job of that kind runs.
 
 ### Profile sections for Quantum Package 2
@@ -100,7 +104,6 @@ A project without that option does not read them.
 |---|---|---|
 | `[setup.qp2]` | `lines` | shell lines run at the start of every job of Quantum Package 2 (QP2). The first line must be `set +u`. The next lines load the modules that QP2 was built with. The last line reads the rc file of QP2: `source /path/to/qp2/quantum_package.rc`. After these lines the commands `qp_run` and `qp_create_ezfio` must be on the PATH. |
 | `[job.qp2]` | `nodes`, `tasks`, `cpus_per_task`, `mem`, `time` | batch options of a QP2 job. QP2 is one process with threads, so `tasks` must be 1. `cpus_per_task` is the number of threads. `cpus_per_task`, `mem` and `time` must be set. |
-| `[executables]` | `determinants_tools` | path of the file `utils/determinants_tools.py` of the QMCPACK source tree |
 | `[executables]` | `qp2_python_bin` | folder of a Python installation that has the package `h5py`. The export program of QP2 (`save_for_qmcpack`) gets this folder first on its PATH. The key may be empty if the Python of `[setup.qp2]` has `h5py`. |
 | `[job.qmc]` | `time_multidet` | time limit of the QMC job of a point with several determinants. Such a job needs more time for every step. Without this key the value of `time` is used. |
 | `[job.qmc]` | `mem_multidet` | memory of the QMC job of a point with several determinants. Without this key the value of `mem` is used. |

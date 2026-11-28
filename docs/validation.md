@@ -433,7 +433,7 @@ mirror image is allowed). The 17 runs used 49,698 search blocks and 1,725 core-h
      section 4 chose (time step 0.005 Ha^-1, held fixed) and 8 different random seeds. All 8 ended as
      `CONVERGED` after 1 scan iteration, and in all 8 the final geometry was higher in DMC energy
      than the start: weighted mean +0.26 +/- 0.07 kcal/mol. These runs shifted the random seeds with
-     an input option that the versions 0.1.0 and 0.2.0 do not have.
+     an input option that no released version (0.1.0 to 0.2.1) has.
    - A follow-up test ran 96 new DMC series with new random seeds. A separate script, not the
      workflow, ran them with the QMC engine of the package. 64 of the series were at the start
      geometry and at the 8 final geometries of these repeat runs. The other 32 were at two

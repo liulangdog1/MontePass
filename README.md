@@ -81,6 +81,10 @@ development working tree (not a git clone), in a new virtual environment of Pyth
 development computer (Python 3.9.6) ran 5 test files, not the whole suite:
 `tests/test_trial_auto.py`, `tests/test_trial_stage.py`, `tests/test_report.py`,
 `tests/test_multidet.py` and `tests/test_workflow_model.py`.
+On 2026-11-27 the code of version 0.2.1 passed all 634 unit tests in the same environment of the
+cluster, run from an archive of the working tree with its `src` folder first on `PYTHONPATH`. The
+development computer (Python 3.9.6, without h5py, so 1 test is skipped) ran 3 test files:
+`tests/test_multidet.py`, `tests/test_qmcpack_engine.py` and `tests/test_trial_stage.py`.
 The cluster programs were ORCA 6.1.0, QMCPACK 4.1.9 (a development build; the inputs use the legacy
 drivers) and Quantum Package 2.
 
@@ -141,7 +145,11 @@ found. In short:
   the rules that were written before the runs. The search modules of version 0.1.0 are the same as in
   that code, except for comments; version 0.1.0 adds path images as search targets and the
   multi-determinant stage. Version 0.2.0 adds the automatic choice of the cutoff
-  (`[trial] cutoff = auto`); it does not change the search modules or the QMC engine.
+  (`[trial] cutoff = auto`); it does not change the search modules or the QMC engine. Version 0.2.1
+  repairs one step of the multi-determinant stage: the package converts the determinant strings of
+  Quantum Package 2 itself, because the script of QMCPACK that did it stops with numpy 2 for some wave
+  functions ([docs/multireference.md](docs/multireference.md), section 3). As in earlier versions, `retry`
+  writes the job files of a failed point again with the installed code before it submits the job.
 - The classic line search and the dense scan were compared with real DMC from the same 5 moved
   starts (section 5). The energies of this item are B3LYP energies above the reference geometry (the
   final geometry of the reference run of the acceptance test); a B3LYP energy has no statistical

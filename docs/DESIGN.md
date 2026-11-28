@@ -66,7 +66,7 @@ src/montepass/
 
 ## 3. Conventions (every module)
 
-- Python 3.9 or newer. Only numpy, scipy, matplotlib and pillow are needed. No other third-party package.
+- Python 3.9 or newer. The driver needs only numpy, scipy, matplotlib and pillow. The scripts that run inside a cluster job also need PySCF and h5py.
 - Geometries: Cartesian, angstrom, shape (n_atoms, 3). The atom order of the user's files is kept in
   every file that the user sees. A module that needs another order (QMCPACK needs atoms grouped by
   element) keeps the permutation and applies it only inside its own files.
@@ -87,7 +87,7 @@ src/montepass/
   program. In a run of the development version of the tests on the cluster on 2026-11-24 (22 files
   and 538 tests; one of these files is not in this repository), `test_dense_search`, `test_report`,
   `test_trial_stage` and `test_workflow_model` took 61 to 125 s each, and each of the other 17 files
-  of this repository took 17 s or less. Version 0.1.0 has 21 test files and 551 tests; version 0.2.0 has 22 test files and 632 tests. Code that talks to a program (ORCA, PySCF, QMCPACK, SLURM) is tested
+  of this repository took 17 s or less. Version 0.1.0 has 21 test files and 551 tests; version 0.2.0 has 22 test files and 632 tests; version 0.2.1 has 22 test files and 634 tests. Code that talks to a program (ORCA, PySCF, QMCPACK, SLURM) is tested
   against saved output files and a fake scheduler.
 - Docstrings and messages are written in plain English: short sentences, exact numbers, units given.
 

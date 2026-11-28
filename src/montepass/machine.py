@@ -157,8 +157,6 @@ class Machine:
                     if not seconds or seconds <= 900:
                         problems.append("[job.qp2] time = %s must be more than 15 minutes: the CIPSI step ends 10 minutes "
                                         "before the time limit of its job" % j.get("time"))
-        if not self.cp.get("executables", "determinants_tools", fallback="").strip():
-            problems.append("[executables] determinants_tools is not set (path of utils/determinants_tools.py of QMCPACK)")
         return problems
 
 

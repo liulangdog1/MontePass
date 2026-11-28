@@ -1645,18 +1645,19 @@ class TestWorkflow(unittest.TestCase):
         for word in ("stage trial (after the geometry search)", "geometries: up to 2", "Quantum Package parent calculations: up to 2",
                      "cutoffs: 2 (0.001, hf)", "DMC series: 2 for each geometry and each cutoff, up to 8 DMC run(s) in total"):
             self.assertIn(word, text)
-        # a profile without the sections and the key for Quantum Package
+        # a profile without the sections for Quantum Package
         cfg = self.cluster_input(TRIAL % "1e-3", setup="", job="", tools="")
         with self.assertRaises(ValueError) as ctx:
             make_backend(cfg)
         message = str(ctx.exception)
         for word in ("[trial] kind = multidet", "testmachine.ini", "section [setup.qp2] has no lines",
-                     "section [job.qp2] is missing", "[executables] determinants_tools is not set"):
+                     "section [job.qp2] is missing"):
             self.assertIn(word, message)
+        self.assertNotIn("determinants_tools", message)          # the package converts the determinant strings itself
         code, text = self.check()
         self.assertEqual(code, 1)
         for word in ("PROBLEM: section [setup.qp2] has no lines", "PROBLEM: section [job.qp2] is missing",
-                     "PROBLEM: [executables] determinants_tools is not set", "stage trial (after the geometry search)"):
+                     "stage trial (after the geometry search)"):
             self.assertIn(word, text)
         # more series than the random numbers of QMCPACK allow on 256 MPI ranks
         cfg = self.cluster_input((TRIAL % "hf").replace("series = 2", "series = 3"), ranks=256)
@@ -1683,7 +1684,7 @@ class TestWorkflow(unittest.TestCase):
         self.assertTrue(lines[-1].startswith("source ") and lines[-1].endswith("quantum_package.rc"), lines)
         self.assertEqual((m.tasks("qp2"), m.threads("qp2"), m.job("qp2")["mem"], m.job("qp2")["time"]), (1, 16, "64G", "12:00:00"))
         self.assertEqual(m.job("qmc")["time_multidet"], "12:00:00")
-        self.assertTrue(m.executable("determinants_tools").endswith("utils/determinants_tools.py"))
+        self.assertFalse(m.cp.has_option("executables", "determinants_tools"))   # not needed since version 0.2.1
         self.assertTrue(m.cp.get("executables", "qp2_python_bin"))
         header = m.header("qp2", "qp2_x", "/work/q")
         for needle in ("#SBATCH --ntasks=1", "#SBATCH --cpus-per-task=16", "#SBATCH --mem=64G", "#SBATCH --time=12:00:00",
