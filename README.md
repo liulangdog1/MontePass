@@ -36,7 +36,11 @@ optimization, VMC, DMC). Every calculation is a batch job with marker files, so 
 stopped continues where it stopped. No workflow manager is needed.
 
 An optional, experimental stage after the search computes DMC energies with a trial wave function of
-several determinants from Quantum Package 2 ([docs/multireference.md](docs/multireference.md)).
+several determinants from Quantum Package 2 ([docs/multireference.md](docs/multireference.md)). With
+`[trial] cutoff = auto` the package chooses the size of the expansion itself: it tests each cut
+against the single determinant, tests whether every tested energy difference (the energy change of
+every target that the search moved, and every barrier at the start geometries and at the final
+geometries) is converged with the size of the expansion, and reports a verdict.
 
 ## Install
 
@@ -63,13 +67,20 @@ cp machines/example_slurm.ini machines/local/<name>.ini        # then edit the c
 
 See [docs/user_guide.md](docs/user_guide.md), sections 1 and 2.
 
-Tested versions. The unit tests passed with the package versions of `requirements.txt` (development
-computer) and of `requirements-cluster.txt` (the cluster of the system tests: Python 3.9.21, PySCF
-2.1.1, h5py 3.8.0). On 2026-11-26 a fresh clone of version 0.1.0 was installed on the cluster in a
+Tested versions. The unit tests of version 0.1.0 passed with the package versions of
+`requirements.txt` (development computer) and of `requirements-cluster.txt` (the cluster of the
+system tests: Python 3.9.21, PySCF 2.1.1, h5py 3.8.0). On 2026-11-26 a fresh clone of version 0.1.0 was installed on the cluster in a
 new virtual environment of Python 3.13.5. After `pip install -e .` all 551 unit tests passed (PySCF
 and h5py were not installed yet; the unit tests do not need them). After `pip install pyscf h5py`
 the environment held numpy 2.5.5, scipy 1.18.1, matplotlib 3.11.2, pillow 13.0.0, PySCF 2.15.1 and
 h5py 3.16.0, and all 4 examples ran ([examples/README.md](examples/README.md)).
+On 2026-11-27 the code of version 0.2.0 was installed on the cluster from an archive of the
+development working tree (not a git clone), in a new virtual environment of Python 3.13.5:
+`pip install -e .`, then `pip install pyscf h5py` (numpy 2.5.5, scipy 1.18.1, PySCF 2.15.1, h5py
+3.16.0). In this environment all 632 unit tests of the final code passed. For version 0.2.0 the
+development computer (Python 3.9.6) ran 5 test files, not the whole suite:
+`tests/test_trial_auto.py`, `tests/test_trial_stage.py`, `tests/test_report.py`,
+`tests/test_multidet.py` and `tests/test_workflow_model.py`.
 The cluster programs were ORCA 6.1.0, QMCPACK 4.1.9 (a development build; the inputs use the legacy
 drivers) and Quantum Package 2.
 
@@ -115,13 +126,22 @@ found. In short:
   (sections 2, 3 and 4). Version 0.1.0 ran all four example inputs from the xyz files to the report,
   the multi-determinant stage included, on 2026-11-25 and again on 2026-11-26 from a fresh clone with
   newer Python packages; every search ended as `CONVERGED` ([examples/README.md](examples/README.md)).
+  The input of `examples/water_multidet` was `cutoff = 1e-3, hf` in those runs. It now asks for
+  `cutoff = auto`. On 2026-11-27 this input ran with real programs, with the ladder 2.5e-4, 1e-4
+  (the default of that day): its last stage ended `CONVERGED` after 12 DMC runs. The ammonia
+  inversion with `cutoff = auto` ended `NOT_DECIDED` with the ladder
+  2.5e-4, 1e-4 (the default of that day), and `CONVERGED` after a third cutoff was added to its input
+  ([examples/README.md](examples/README.md); [docs/multireference.md](docs/multireference.md),
+  section 9). The default ladder is now 2.5e-4, 1e-4, 5e-5, so the stage adds the third cutoff by
+  itself in such a case.
 - Acceptance test (section 6) of the code of 2026-11-22, 16:37, which was not changed during the test:
   17 runs on water, ammonia, HCN, formaldehyde and ethylene, started from geometries in which every
   atom was moved at random, with a root mean square displacement per atom of 0, 0.05, 0.10 or 0.20
   angstrom. All 17 ended as `CONVERGED` after one command, and all 12 runs with a moved start passed
   the rules that were written before the runs. The search modules of version 0.1.0 are the same as in
   that code, except for comments; version 0.1.0 adds path images as search targets and the
-  multi-determinant stage.
+  multi-determinant stage. Version 0.2.0 adds the automatic choice of the cutoff
+  (`[trial] cutoff = auto`); it does not change the search modules or the QMC engine.
 - The classic line search and the dense scan were compared with real DMC from the same 5 moved
   starts (section 5). The energies of this item are B3LYP energies above the reference geometry (the
   final geometry of the reference run of the acceptance test); a B3LYP energy has no statistical
@@ -150,7 +170,7 @@ docs/               user guide, method description, design notes, test results
 - [docs/methods.md](docs/methods.md): what each stage computes, with formulas.
 - [docs/protocols.md](docs/protocols.md): the dense-scan protocols v1 and v2 and how they differ, with measured costs.
 - [docs/automatic_settings.md](docs/automatic_settings.md): how the QMC settings are chosen.
-- [docs/multireference.md](docs/multireference.md): DMC energies with a trial wave function of several determinants (`[trial] kind = multidet`), an experimental stage; its section 9 gives the measured energies.
+- [docs/multireference.md](docs/multireference.md): DMC energies with a trial wave function of several determinants (`[trial] kind = multidet`), an experimental stage; its section 9 gives the measured energies, and its section 10 the automatic choice of the cutoff (`[trial] cutoff = auto`).
 - [docs/DESIGN.md](docs/DESIGN.md): notes for developers.
 - [docs/validation.md](docs/validation.md): the tests on real molecules and on model surfaces, and their results.
 

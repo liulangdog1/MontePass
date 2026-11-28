@@ -53,7 +53,11 @@ src/montepass/
   workflow.py         the stages and their order; the backend for model molecules
   trial.py            the optional stage "trial": after the search, DMC energies with several determinants at the
                       start and the final geometry of every target (input section [trial]; tables in report/trial.py;
-                      docs/multireference.md)
+                      docs/multireference.md). With [trial] cutoff = auto the stage chooses its cutoffs and its
+                      number of DMC series itself, and keeps every decision in its record
+  trial_rule.py       the rule for the size of the determinant expansion: each cut against the single RHF
+                      determinant, and the convergence of every tested energy difference between two cutoffs.
+                      Pure functions; the stage uses them to decide, the report to print the same tests
   cluster.py          the backend that runs ORCA, PySCF and QMCPACK through a batch system
   shifted.py          a rigidly moved surrogate, for tests with a wrong starting geometry
   report/             tables, plots, animations
@@ -83,7 +87,7 @@ src/montepass/
   program. In a run of the development version of the tests on the cluster on 2026-11-24 (22 files
   and 538 tests; one of these files is not in this repository), `test_dense_search`, `test_report`,
   `test_trial_stage` and `test_workflow_model` took 61 to 125 s each, and each of the other 17 files
-  of this repository took 17 s or less. Version 0.1.0 has 21 test files and 551 tests. Code that talks to a program (ORCA, PySCF, QMCPACK, SLURM) is tested
+  of this repository took 17 s or less. Version 0.1.0 has 21 test files and 551 tests; version 0.2.0 has 22 test files and 632 tests. Code that talks to a program (ORCA, PySCF, QMCPACK, SLURM) is tested
   against saved output files and a fake scheduler.
 - Docstrings and messages are written in plain English: short sentences, exact numbers, units given.
 

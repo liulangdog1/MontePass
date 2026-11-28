@@ -6,11 +6,15 @@ gives the results of the runs and the defects that the runs found.
 
 The unit tests (`tests/`) need no cluster program: `python -m unittest discover -s tests`.
 
-All runs on real molecules in this file, except the example runs of version 0.1.0, were made on
-2026-11-22 and 2026-11-23 on a SLURM cluster with ORCA 6.1.0, PySCF 2.1.1, QMCPACK 4.1.9 (legacy
-drivers), Python 3.9.21, numpy 1.26.4 and matplotlib 3.7.1. A QMC job used 32 cores. The example
-runs of version 0.1.0 were made on 2026-11-25 and 2026-11-26. Limit 6 of section 6 and section 10
-cite them, and [examples/README.md](../examples/README.md) gives their program versions.
+All runs on real molecules in this file, except the example runs of version 0.1.0 and the runs of
+version 0.2.0, were made on 2026-11-22 and 2026-11-23 on a SLURM cluster with ORCA 6.1.0, PySCF
+2.1.1, QMCPACK 4.1.9 (legacy drivers), Python 3.9.21, numpy 1.26.4 and matplotlib 3.7.1. A QMC job
+used 32 cores. The example runs of version 0.1.0 were made on 2026-11-25 and 2026-11-26. Limit 6 of
+section 6 and section 10 cite them, and [examples/README.md](../examples/README.md) gives their
+program versions. The runs of the automatic choice of the cutoff were made on 2026-11-27 with the
+code of version 0.2.0 before its last corrections of that day, with the ladder 2.5e-4, 1e-4 (the
+default of that day), Python 3.13.5, numpy 2.5.5 and PySCF 2.15.1. Section 10 names them, and
+[multireference.md](multireference.md), section 9, gives their numbers.
 
 **Which version of the code was tested.** The package changed during these tests, because the
 tests found defects (sections 8 and 9). "Final package" below means the version of the code that
@@ -429,7 +433,7 @@ mirror image is allowed). The 17 runs used 49,698 search blocks and 1,725 core-h
      section 4 chose (time step 0.005 Ha^-1, held fixed) and 8 different random seeds. All 8 ended as
      `CONVERGED` after 1 scan iteration, and in all 8 the final geometry was higher in DMC energy
      than the start: weighted mean +0.26 +/- 0.07 kcal/mol. These runs shifted the random seeds with
-     an input option that version 0.1.0 does not have.
+     an input option that the versions 0.1.0 and 0.2.0 do not have.
    - A follow-up test ran 96 new DMC series with new random seeds. A separate script, not the
      workflow, ran them with the QMC engine of the package. 64 of the series were at the start
      geometry and at the 8 final geometries of these repeat runs. The other 32 were at two
@@ -548,4 +552,13 @@ jobs is tested with a recorded batch system.
   these runs. Their unit tests are in `tests/test_workflow_model.py`, `tests/test_multidet.py` and
   `tests/test_trial_stage.py`. The multi-determinant stage also ran with real programs (Quantum
   Package 2 and QMCPACK) in the example `examples/water_multidet` with version 0.1.0, on 2026-11-25 and
-  on 2026-11-26 ([examples/README.md](../examples/README.md)).
+  on 2026-11-26 ([examples/README.md](../examples/README.md)). The input of that example was then
+  `n_det_max = 10000` and `cutoff = 1e-3, hf`.
+- The automatic choice of the cutoff (`[trial] cutoff = auto`, added in version 0.2.0;
+  [multireference.md](multireference.md), section 10) for a molecule larger than ammonia. It ran
+  with real programs on 2026-11-27, with the ladder 2.5e-4, 1e-4 (the default of that day), for
+  water (`CONVERGED` after 12 DMC runs) and for the ammonia inversion (`NOT_DECIDED`; `CONVERGED`
+  after a third cutoff was added to the input). The default ladder is now 2.5e-4, 1e-4, 5e-5.
+  [multireference.md](multireference.md), section 9, gives the numbers. Its unit
+  tests are in `tests/test_trial_auto.py`: they use a stand-in engine whose energies the tests set,
+  and one test gives the plan to the real engine with a fake batch system.

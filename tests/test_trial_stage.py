@@ -327,7 +327,10 @@ class TestConfig(unittest.TestCase):
     def test_multidet_values(self):
         cfg = load(model_input("kind = multidet\nn_det_max = 10000\ncutoff = 1e-3, HF, 2.5e-4\n"))
         self.assertEqual(cfg.trial, {"kind": "multidet", "n_det_max": 10000, "cutoffs": [1e-3, "hf", 2.5e-4], "series": 2,
-                                     "qp2_basis": "cc-pvtz_ecp_ccecp", "qp2_pseudo": "ccecp", "not_converged": "stop"})
+                                     "qp2_basis": "cc-pvtz_ecp_ccecp", "qp2_pseudo": "ccecp", "not_converged": "stop",
+                                     # the keys of the rule for the size of the expansion: a list of cutoffs is the
+                                     # manual mode (tests/test_trial_auto.py has the automatic mode)
+                                     "tolerance": 1.0, "series_max": 2, "auto": None})
         self.assertEqual(load(model_input("kind = multidet\ncutoff = hf\nnot_converged = Run\n")).trial["not_converged"], "run")
         self.assertEqual(cfg.summary()["trial"], cfg.trial)
         self.assertEqual(sorted(cfg.summary()), sorted(self.SUMMARY_KEYS + ["trial"]))
@@ -362,7 +365,7 @@ class TestConfig(unittest.TestCase):
             ("kind = multidet\nn_det_max = 100\n", "[trial] cutoff is needed for kind = multidet"),
             ("kind = multidet\ncutoff = 1e-3\n", "[trial] n_det_max is needed for a numeric cutoff"),
             ("kind = multidet\nn_det_max = auto\ncutoff = 1e-3\n", "[trial] n_det_max = auto is not built yet"),
-            ("kind = multidet\nn_det_max = 100\ncutoff = auto\n", "[trial] cutoff = auto is not built yet"),
+            ("kind = multidet\nn_det_max = 100\ncutoff = auto, 1e-3\n", "[trial] cutoff = auto, 1e-3: the word auto must stand alone"),
             ("kind = multidet\nn_det_max = 100\ncutoff = 1.5\n", "[trial] cutoff = 1.5 must be between 0 and 1"),
             ("kind = multidet\nn_det_max = 100\ncutoff = 0\n", "[trial] cutoff = 0 must be between 0 and 1"),
             ("kind = multidet\nn_det_max = 100\ncutoff = 1\n", "[trial] cutoff = 1 must be between 0 and 1"),
@@ -386,7 +389,7 @@ class TestConfig(unittest.TestCase):
                           problems(model_input("kind = multidet\ncutoff = hf\n", "[system]\n" + system)))
         # one input with several mistakes: every one of them is reported
         text = problems(model_input("kind = multidet\nn_det_max = 1\ncutoff = 2, auto\nseries = 0\n"))
-        for expected in ("n_det_max = 1 must", "cutoff = 2 must", "cutoff = auto is not", "series = 0 must"):
+        for expected in ("n_det_max = 1 must", "cutoff = 2 must", "the word auto must stand alone", "series = 0 must"):
             self.assertIn(expected, text)
 
 
@@ -604,6 +607,41 @@ class TestTrialRuns(unittest.TestCase):
         rows = [r for r in other.results()["rows"] if (r["target"], r["geometry"]) == ("reactant", "start")]
         self.assertEqual([r["label"] for r in rows], ["hf", "n10000_c2e-04"])
         self.assertEqual([r["cost"] for r in rows], [3.0 + 7.0, 3.0])
+
+    def test_the_shared_parent_is_counted_once_when_its_owner_left_the_plan(self):
+        class WithParent(StandIn):
+            """As the real engine: the point that asked for the parent calculation first carries its core-hours."""
+
+            def qp2_info(self, qp2_key):
+                return {"owner": qp2_key.rsplit("/", 1)[0] + "/n10000_c1e-03", "parent_core_hours": 7.0}
+
+            def cost(self, key):
+                return super().cost(key) + (7.0 if key in self.points and key.endswith("/n10000_c1e-03") else 0.0)
+        engine = WithParent()
+        runs = self.runs(engine=engine)
+        runs.tick()
+        self.finish_all(engine)
+        res = runs.results()
+        rows = [r for r in res["rows"] if (r["target"], r["geometry"]) == ("reactant", "start")]
+        self.assertEqual([r["cost"] for r in rows], [3.0 + 7.0, 3.0])  # the row of the owner holds the parent
+        self.assertEqual((res["left_plan"], res["cost_left_plan"]), ([], 0.0))
+        # 12 runs of 1.5 core-hours, and the parent of each of the 3 geometries once
+        self.assertAlmostEqual(sum(r["cost"] for r in res["rows"]) + res["cost_left_plan"], 12 * 1.5 + 3 * 7.0)
+        # the cutoff 1e-3 leaves the plan. Its series-1 points own the parents, and they are now points of an older plan
+        other = self.runs(dict(TRIAL_DICT, cutoffs=["hf", 2e-4]), engine=engine)
+        other.tick()
+        self.finish_all(engine)
+        res = other.results()
+        rows = [r for r in res["rows"] if (r["target"], r["geometry"]) == ("reactant", "start")]
+        self.assertEqual([r["cost"] for r in rows], [3.0 + 7.0, 3.0])  # the first row of the geometry holds the parent
+        self.assertEqual(len(res["left_plan"]), 6)
+        self.assertAlmostEqual(res["cost_left_plan"], 6 * 1.5)         # the 6 old runs, without the 3 parents
+        # every parent is counted once: 18 runs, 3 parents
+        self.assertAlmostEqual(sum(r["cost"] for r in res["rows"]) + res["cost_left_plan"], 18 * 1.5 + 3 * 7.0)
+        # an owner whose folder was deleted has no cost of its own: nothing is taken from the other old runs
+        owner = "trial/reactant/start/n10000_c1e-03"
+        del engine.points[owner], engine.specs[owner]
+        self.assertAlmostEqual(other.results()["cost_left_plan"], 5 * 1.5)
 
     def test_a_refusal_that_lasts_more_than_an_hour_is_a_problem(self):
         now = [1000.0]
@@ -1810,10 +1848,12 @@ class TestReport(unittest.TestCase):
                                    (sf["energy"] - mf["energy"] - ss["energy"] + ms["energy"]) * H, places=5)
             self.assertAlmostEqual(float(r["difference_error_kcal_per_mol"]),
                                    float(np.sqrt(sum(x["error"] ** 2 for x in (sf, mf, ss, ms)))) * H, places=5)
-        self.assertEqual(len(rows), 8 + 4 + 4 + 2)
+        # and one line "against hf" for each of the 4 geometries: the cut minus the row hf of this stage
+        self.assertEqual(len(rows), 8 + 4 + 4 + 2 + 4)
         self.assertEqual({r["uses_not_converged_geometry"] for r in rows}, {""})
-        # no line of the file subtracts a single-determinant energy from a multi-determinant energy
-        self.assertEqual({r["row"] for r in rows}, {"energy", "final minus start", "barrier", "barrier change"})
+        # no line of the file subtracts the single-determinant energy of the search from a multi-determinant energy
+        self.assertEqual({r["row"] for r in rows}, {"energy", "final minus start", "barrier", "barrier change", "against hf"})
+        self.assertEqual({r["single_determinant_dmc_energy_hartree"] for r in rows if r["row"] != "energy"}, {""})
         text = read(os.path.join(results, "trial_wavefunctions.md"))
         for needle in (
                 "# model_ammonia_inversion: DMC energies with several determinants", "1 standard error",
@@ -1919,14 +1959,16 @@ class TestReport(unittest.TestCase):
             rows = list(csv.DictReader(fh))
         marked = {(r["row"], r["target"], r["geometry"]) for r in rows if r["uses_not_converged_geometry"] == "yes"}
         self.assertEqual(marked, {("energy", "saddle", "final"), ("final minus start", "saddle", "final minus start"),
-                                  ("barrier", "saddle", "final"), ("barrier change", "saddle", "final minus start")})
+                                  ("barrier", "saddle", "final"), ("barrier change", "saddle", "final minus start"),
+                                  ("against hf", "saddle", "final")})
         text = read(os.path.join(folder, "t.md"))
         self.assertIn("Search status of every target: reactant ", text)
         self.assertIn("saddle NOT_CONVERGED", text)
         self.assertEqual(text.count("The search of target(s) saddle ended NOT_CONVERGED"), 2)     # under the 2 tables
         # the geometry cell of the 2 final rows of the saddle in 3 tables, 2 cells of changes, 2 x 2 barrier cells
-        # (final geometries and change), and 1 in each of the 2 sentences
-        self.assertEqual(text.count(RT.MARK.strip()), 6 + 2 + 4 + 2)
+        # (final geometries and change), 1 in each of the 2 sentences, and the geometry cell of the cut in the table
+        # "DMC energy against the single RHF determinant"
+        self.assertEqual(text.count(RT.MARK.strip()), 6 + 2 + 4 + 2 + 1)
         self.assertIn("| saddle | final (search NOT_CONVERGED) | 0.001 |", text)
 
     def test_a_project_whose_option_was_switched_off_gets_no_trial_files(self):

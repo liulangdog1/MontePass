@@ -259,8 +259,11 @@ class Workflow:
         Without the option the state holds no stage ``trial`` (a project that never had the option is not
         touched). With the option the stage stands between ``search`` and ``report``. When the stage is new, or
         when it is DONE and the values of ``[trial]`` are no longer those of its record (a cutoff was added, for
-        example), the stage and the stage ``report`` are set to PENDING, so that the next passes compute what is
-        missing and write the report again. Points that exist are never computed again.
+        example, or the record was written by an older version that did not know the key ``tolerance``), the
+        stage and the stage ``report`` are set to PENDING, so that the next passes compute what is missing and
+        write the report again. Points that exist are never computed again. The record keeps the values of the
+        input as they are: what the automatic mode of the stage adds while it runs (cutoffs, DMC series) is in
+        another entry of the record, so it never looks like a changed input.
 
         When the option is switched off, the stage leaves the project state, and every point of its record that
         has not ended is stopped (the log names each one). If the stage never started (no record), the stage
@@ -749,7 +752,9 @@ class Workflow:
 
     def trial_runs(self):
         """The object that runs the stage ``trial`` (created once per process; its record is on disk). The two
-        geometries of every target come from its search: the first centre and the final geometry."""
+        geometries of every target come from its search: the first centre and the final geometry. The kinds of
+        the targets come from the project state: the automatic mode of the stage tests the barrier of every
+        pair of a saddle target and a minimum target."""
         if self._trial_runs is None:
             from .trial import TrialRuns
             p = self.project
@@ -757,8 +762,9 @@ class Workflow:
             for name in p.targets():
                 drv = self.driver(name)
                 geometries[name] = (drv.trajectory()[0], drv.final_geometry())
+            kinds = {name: str(p.target(name).get("kind", "")) for name in p.targets()}
             self._trial_runs = TrialRuns(self.backend.engine(self), p.state["symbols"], geometries, self.cfg.trial,
-                                         self.trial_settings(), self.cap_blocks(), self.trial_dir, log=p.log)
+                                         self.trial_settings(), self.cap_blocks(), self.trial_dir, log=p.log, kinds=kinds)
         return self._trial_runs
 
     def not_converged_targets(self) -> List[str]:

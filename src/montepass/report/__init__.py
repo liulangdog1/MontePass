@@ -10,7 +10,8 @@
     trial_wavefunctions.csv, trial_wavefunctions.md
                                  only for a project whose input asks for the stage "trial" and that has a record of
                                  it: DMC energies with several determinants at the start and the final geometry of
-                                 every target
+                                 every target, each cut against the single RHF determinant, and the convergence of
+                                 the energy differences with the size of the expansion
     geometries/                  <target>_start.xyz, <target>_final.xyz, <target>_trajectory.xyz, bond_table.csv,
                                  path_internal_coordinates.csv (every bond length and angle of every path image)
     plots/                       pca_variance, path_profile, path_geometry (bond lengths and angles along the path),

@@ -1,6 +1,7 @@
 """The tables of the stage ``trial``: DMC energies with a multi-determinant trial wave function.
 
-    trial_wavefunctions.csv     one line per target, geometry and cutoff; then one line per energy difference
+    trial_wavefunctions.csv     one line per target, geometry and cutoff; then one line per energy difference;
+                                then the lines of the two tests of the size of the expansion
     trial_wavefunctions.md      the same numbers in tables for a person
 
 Both files are written only for a project whose state holds the stage ``trial`` and that has a record of it
@@ -12,36 +13,48 @@ Rules of these tables
 * A difference of DMC energies is printed only if all its rows have the same cutoff and the same ``n_det_max``,
   every series of every row is DONE, and every row passed the VMC check without Jastrow factor. Else the cell
   reads ``NOT COMPARABLE:`` and the reason.
-* A difference is always between rows of the same cutoff. The error of a difference is the square root of the
-  sum of the squared errors of its rows (the rows are independent runs). A row that a difference uses twice
-  with opposite signs (the final geometry of a target that the search did not move is its start geometry)
-  cancels exactly.
-* No difference between a single-determinant energy and a multi-determinant energy is printed. The two use
-  different trial wave functions and so have different fixed-node errors; their difference is not an energy
-  difference of the molecule. The single-determinant energy of the search stands in a column of its own.
+* An energy difference of the molecule is always between rows of the same cutoff. The error of a difference is
+  the square root of the sum of the squared errors of its rows (the rows are independent runs). A row that a
+  difference uses twice with opposite signs (the final geometry of a target that the search did not move is its
+  start geometry) cancels exactly.
+* No difference between the single-determinant energy of the search and a multi-determinant energy is printed.
+  The two use different trial wave functions and so have different fixed-node errors; their difference is not an
+  energy difference of the molecule. The single-determinant energy of the search stands in a column of its own.
   Both kinds of runs use the same basis set and pseudopotentials: for every geometry the engine checks that the
   RHF energies of PySCF and of Quantum Package 2 (QP2) agree (step ``mdc4q``); the tables show that difference.
 * Every row and every difference that uses the final geometry of a target whose search ended NOT_CONVERGED is
   marked (input key ``[trial] not_converged = run``).
+
+The size of the expansion (rule: module :mod:`montepass.trial_rule`; both modes of ``[trial] cutoff``)
+-----------------------------------------------------------------------------------------------------
+* Section "DMC energy against the single RHF determinant" (a plan with ``hf`` and a numeric cutoff): the DMC
+  energy of every cut minus that of the row ``hf`` of this stage at the same geometry. Both rows use the RHF
+  orbitals of QP2 and the same chain of programs, so the lower energy has the better nodes. This is the one
+  place where rows of two cutoffs are subtracted, and it is no energy difference of the molecule.
+* Section "Convergence with the size of the expansion" (at least two numeric cutoffs): every printed energy
+  difference at the two smallest usable cutoffs, its change, and a verdict.
+* Section "Automatic choice of the cutoff" (only with ``cutoff = auto``): the rule, the ladder, every decision
+  of the stage from its record, the final verdict and the result.
 """
 from __future__ import annotations
 
 import csv
 import os
 import time
-from typing import Dict, List, Optional, Sequence, Tuple
-
-import numpy as np
+from typing import Dict, List, Optional, Sequence
 
 from .. import trial as T
+from .. import trial_rule as R
 from ..engine.base import DONE, FINAL_STATES
 from ..engine.multidet import HF_LABEL
-from ..project import TRIAL
-from ..units import HARTREE_TO_KCAL
+from ..project import NEEDS_ATTENTION, TRIAL
+# the rule of a printed difference is the one that the stage itself uses to test the size of the expansion
+from ..trial_rule import NOT_COMPARABLE, not_comparable  # noqa: F401  (part of this module for its callers)
+from ..trial_rule import combination as _combination
+from ..trial_rule import used as _used
 from .tables import ReportData, Skip, _md_table, atomic_write, fmt_pm
 
 STATE_FOLDER = os.path.join("work", "trial")
-NOT_COMPARABLE = "NOT COMPARABLE: "
 NOT_COMPUTED = "not computed"
 NOT_CONVERGED = "NOT_CONVERGED"
 MARK = " (search NOT_CONVERGED)"
@@ -53,6 +66,31 @@ NO_SUBTRACTION = ("So the two energy columns must not be subtracted from each ot
                   "difference: the two trial wave functions have different nodes, so their fixed-node errors differ, and "
                   "their difference is not an energy difference of the molecule.")
 ONE_CUTOFF = "One cutoff cannot show whether the energy difference is converged with the size of the expansion."
+AGAINST_HF = (
+    "What this table tests. At every geometry the DMC energy with a cut is compared with the DMC energy with the "
+    "single RHF determinant of Quantum Package 2. That is the row hf of this stage: it has the same RHF orbitals and "
+    "the same chain of programs as the cut. Both are fixed-node DMC energies, so the lower energy has the better "
+    "nodes. A cut whose energy is higher than that of the single determinant by more than %g standard errors has "
+    "worse nodes than one determinant at that geometry: the cut is \"above\", and its cutoff is NOT USABLE. The "
+    "measured cause for water and ammonia: the coefficients of the determinants come from Quantum Package without a "
+    "Jastrow factor, and they are not optimized together with the Jastrow factor (docs/multireference.md, "
+    "section 9). This table uses the row hf of this stage. It is no difference to the single-determinant energy of "
+    "the search, which has the Kohn-Sham orbitals of PySCF: this report prints no such difference." % R.ABOVE_SIGMAS)
+NO_HF_ROW = ("The stage holds no row hf, so no cut was tested against the single RHF determinant: every numeric cutoff "
+             "counts as \"%s\". Add hf to [trial] cutoff, or use cutoff = auto, to get this test." % R.NOT_TESTED)
+MANUAL_MODE = ("The cutoffs of this project were chosen by hand ([trial] cutoff is a list). So this section gives a "
+               "verdict only, and the package adds no DMC run by itself. With [trial] cutoff = auto the package adds DMC "
+               "series or the next cutoff of its ladder when the test needs them.")
+ATTENTION_NOTE = ("At its last pass the stage had the status %s, with runs that need attention: %s. The stage does not "
+                  "use such a run. A run whose request the engine refused is still printed in the tables of this file "
+                  "with its energy, and the two tests of the size of the expansion still use it: do not use a value of a "
+                  "row that the message names. A run that failed or was stopped makes its row not complete.")
+CONVERGENCE_COLUMNS = (
+    "The change is the value at the fine cutoff minus the value at the coarse cutoff, with its standard error. The "
+    "bound is the size of the change plus %(n)g standard errors. CONVERGED: the bound is at most the tolerance. "
+    "NOT_CONVERGED: the size of the change minus %(n)g standard errors is above the tolerance. NOT_DECIDED: neither. "
+    "The change of a barrier (final minus start) is not tested: it is the difference of two tested values."
+    % {"n": R.VERDICT_SIGMAS})
 
 CSV_HEADER = [
     "row", "target", "kind", "geometry", "minus_target", "cutoff", "n_det_max", "n_det_cipsi", "n_det",
@@ -65,6 +103,12 @@ CSV_HEADER = [
     "single_determinant_dmc_energy_hartree", "single_determinant_dmc_error_hartree",
     "search_status", "minus_target_search_status", "uses_not_converged_geometry",
     "difference_kcal_per_mol", "difference_error_kcal_per_mol",
+    # the columns of the lines "against hf" and "convergence" (added after version 0.1.0, so they stand at the end)
+    "dmc_minus_hf_millihartree", "dmc_minus_hf_error_millihartree", "against_hf", "cutoff_usable",
+    "coarse_cutoff", "fine_cutoff", "difference_coarse_kcal_per_mol", "difference_coarse_error_kcal_per_mol",
+    "difference_fine_kcal_per_mol", "difference_fine_error_kcal_per_mol", "change_fine_minus_coarse_kcal_per_mol",
+    "change_error_kcal_per_mol", "bound_kcal_per_mol", "tolerance_kcal_per_mol", "verdict", "project_verdict",
+    "project_verdict_reason", "automatic_final_verdict",
 ]
 
 
@@ -85,70 +129,18 @@ def cutoff_text(cutoff) -> str:
     return HF_LABEL if cutoff == HF_LABEL else "%g" % float(cutoff)
 
 
-def _used(row: dict, name: str):
-    """The cutoff or the ``n_det_max`` that the point was computed with: the value that the engine reports, or
-    the value of the record while the engine has none yet."""
-    got = row["trial"].get(name)
-    return row[name] if got is None else got
-
-
-def not_comparable(rows: Sequence[Optional[dict]]) -> Optional[str]:
-    """None if a difference of the DMC energies of these rows may be printed. Else the reason in plain words."""
-    if any(r is None for r in rows):
-        return "a geometry has no row for this cutoff"
-    reasons: List[str] = []
-    first = rows[0]
-    for r in rows[1:]:
-        for name in ("cutoff", "n_det_max"):
-            if _used(r, name) != _used(first, name):
-                reasons.append("%s differs (%s at %s %s, %s at %s %s)" % (
-                    name, _used(first, name), first["target"], first["geometry"], _used(r, name), r["target"], r["geometry"]))
-    for r in rows:
-        where = "%s %s" % (r["target"], r["geometry"])
-        check = r["checks"].get("mdvmc")
-        if not r["done"]:
-            reasons.append("%s: %d of %d series are DONE (%s)" % (where, r["states"].count(DONE), len(r["states"]),
-                                                                  ", ".join(r["states"])))
-        if check and not check.get("ok"):
-            reasons.append("%s: the VMC check without Jastrow factor did not pass (verdict %s)"
-                           % (where, check.get("verdict", "FAIL")))
-        if r["done"] and not check:             # for a geometry that is not DONE this follows from the first reason
-            reasons.append("%s: the VMC check without Jastrow factor was not made" % where)
-        if r["done"] and (r["energy"] is None or r["error"] is None):
-            reasons.append("%s: no DMC energy" % where)
-    return "; ".join(reasons) or None
-
-
-def _combination(terms: Sequence[Tuple[Optional[dict], float]]) -> dict:
-    """The energy sum ``sum(c * E(row))`` in kcal/mol, or the reason why it is not printed.
-
-    A row that appears twice (the final row of a target that did not move is its start row) gets the sum of its
-    coefficients; a coefficient of 0 drops the row from the value but not from the rule: every row that the
-    difference names must be complete. The error is ``sqrt(sum(c**2 * error(row)**2))``: the rows are
-    independent runs. When every coefficient cancels, the value is 0 and exact."""
-    if any(row is None for row, _c in terms):
-        return {"value": None, "error": None, "text": NOT_COMPARABLE + "a geometry has no row for this cutoff"}
-    rows: List[dict] = []
-    coef: Dict[int, float] = {}
-    for row, c in terms:
-        if id(row) not in coef:
-            rows.append(row)
-            coef[id(row)] = 0.0
-        coef[id(row)] += float(c)
-    why = not_comparable(rows)
-    if why:
-        return {"value": None, "error": None, "text": NOT_COMPARABLE + why}
-    used = [r for r in rows if coef[id(r)] != 0.0]
-    if not used:
-        return {"value": 0.0, "error": 0.0, "text": None}
-    value = sum(coef[id(r)] * r["energy"] for r in used) * HARTREE_TO_KCAL
-    error = float(np.sqrt(sum((coef[id(r)] * r["error"]) ** 2 for r in used))) * HARTREE_TO_KCAL
-    return {"value": float(value), "error": error, "text": None}
-
-
 def _difference(a: Optional[dict], b: Optional[dict]) -> dict:
-    """Energy of row ``a`` minus energy of row ``b`` in kcal/mol, or the reason why it is not printed."""
+    """Energy of row ``a`` minus energy of row ``b`` in kcal/mol, or the reason why it is not printed
+    (``trial_rule.combination`` holds the rule and the arithmetic)."""
     return _combination([(a, 1.0), (b, -1.0)])
+
+
+def _uses_not_converged(d: dict, statuses: Dict[str, str]) -> bool:
+    """True if a tested difference of the rule uses the final geometry of a target whose search ended
+    NOT_CONVERGED. A barrier at the start geometries uses no final geometry."""
+    if d["geometry"] == "start":
+        return False
+    return NOT_CONVERGED in (statuses.get(d["target"]), statuses.get(d.get("minus_target")))
 
 
 def collect(data: ReportData, engine) -> dict:
@@ -158,7 +150,14 @@ def collect(data: ReportData, engine) -> dict:
     and ``single``, the single-determinant DMC energy of the same geometry from the search (``{"value", "error"}``
     or None). ``changes``: final minus start for every target and cutoff. ``barriers``: saddle minus minimum at
     the final geometries, ``start_barriers`` the same at the start geometries, and ``barrier_changes`` the
-    difference of the two, for every pair of a saddle target and a minimum target and every cutoff."""
+    difference of the two, for every pair of a saddle target and a minimum target and every cutoff.
+
+    ``evaluation``: the rule for the size of the expansion on these rows (``trial_rule.evaluate``, with the
+    tolerance of the record): each cut against the row ``hf``, and the verdict of every tested difference.
+    Its lines against ``hf`` and its differences get the key ``marked``. ``auto``: the record entry of the
+    automatic mode with its decisions, or None for a project of the manual mode. ``stage_status`` and
+    ``stage_message``: the status and the message of the stage at its last pass (the file says so when the stage
+    has runs that need attention, because the rows still hold every energy that is on disk)."""
     if engine is None:
         raise Skip("the report was built without an engine, so the points of the stage trial cannot be read")
     state = T.read_state(os.path.join(data.project_dir, STATE_FOLDER))
@@ -211,11 +210,23 @@ def collect(data: ReportData, engine) -> dict:
     for r in rows:
         r["marked"] = r["geometry"] == "final" and r["search_status"] == NOT_CONVERGED
     notes = {name: str(rec.get("note") or "") for name, rec in state["targets"].items()}
+    # the size of the expansion: the same rule that the automatic mode of the stage applies. A record of version
+    # 0.1.0 names no tolerance; it gets the default of the input file.
+    tolerance = float((res["rule"].get("trial") or {}).get("tolerance") or R.DEFAULT_TOLERANCE)
+    evaluation = R.evaluate(rows, same, kinds, tolerance, text=cutoff_text)
+    for line in evaluation["against_hf"]:
+        line["kind"], line["search_status"] = kinds[line["target"]], statuses[line["target"]]
+        line["marked"] = line["geometry"] == "final" and line["search_status"] == NOT_CONVERGED
+    for d in evaluation["differences"]:
+        d["marked"] = _uses_not_converged(d, statuses)
+    auto = state.get("auto") if isinstance(state.get("auto"), dict) else None
     return {"title": data.title, "written": time.strftime("%Y-%m-%d %H:%M:%S"), "rule": res["rule"], "rows": rows,
             "left_plan": list(res.get("left_plan") or []), "cost_left_plan": float(res.get("cost_left_plan") or 0.0),
             "changes": changes, "barriers": barriers, "start_barriers": start_barriers, "barrier_changes": barrier_changes,
-            "notes": notes, "xc": (data.settings or {}).get("xc"), "statuses": statuses,
-            "one_cutoff": len((res["rule"].get("trial") or {}).get("cutoffs") or labels) == 1}
+            "notes": notes, "xc": (data.settings or {}).get("xc"), "statuses": statuses, "kinds": kinds,
+            "one_cutoff": len((res["rule"].get("trial") or {}).get("cutoffs") or labels) == 1,
+            "evaluation": evaluation, "auto": auto,
+            "stage_status": str(state.get("status") or ""), "stage_message": str(state.get("message") or "")}
 
 
 # ============================================================================= cells
@@ -227,6 +238,14 @@ def _fact(row: dict, name: str):
 def _ratio(row: dict) -> Optional[float]:
     parent, n = _fact(row, "n_det_parent"), _fact(row, "n_det")
     return None if (not parent or not n) else float(parent) / float(n)
+
+
+def _ratio_cut(row: dict) -> str:
+    """The ratio of :func:`_ratio` with 1 decimal that is cut and never rounded up: 3280 / 329 = 9.97 gives ``9.9``.
+    So a ratio below a limit is printed below that limit. The two numbers of determinants are whole numbers, and
+    the division is made with whole numbers."""
+    tenths = (10 * int(_fact(row, "n_det_parent"))) // int(_fact(row, "n_det"))
+    return "%d.%d" % divmod(tenths, 10)
 
 
 def _check(row: dict) -> dict:
@@ -302,7 +321,14 @@ def write_csv(table: dict, path: str) -> None:
     the energy change final minus start (``row`` = ``final minus start``), one line per saddle, minimum, geometry
     and cutoff with the barrier (``row`` = ``barrier``, ``geometry`` = ``start`` or ``final``; ``target`` is the
     saddle, ``minus_target`` the minimum), and one line per saddle, minimum and cutoff with the change of the
-    barrier (``row`` = ``barrier change``)."""
+    barrier (``row`` = ``barrier change``).
+
+    Then the two tests of the size of the expansion (``trial_rule``). ``row`` = ``against hf``: one line per
+    target, geometry and numeric cutoff with the DMC energy of the cut minus that of the row ``hf``, the result
+    (``above``, ``not above`` or ``not available:`` and the reason) and what follows for the cutoff. ``row`` =
+    ``convergence``: one line per tested energy difference with its values at the coarse and at the fine cutoff,
+    their change, the bound and the verdict; every such line repeats the verdict of the project. When no
+    difference was tested, one line holds the verdict of the project and its reason."""
     lines: List[Dict[str, object]] = []
     for r in table["rows"]:
         check, single = _check(r), r["single"]
@@ -338,6 +364,7 @@ def write_csv(table: dict, path: str) -> None:
         for d in entries:
             lines.append(_difference_line(name, d, d["saddle"], "saddle", d["geometry"], d["minimum"],
                                           d["saddle_status"], d["minimum_status"]))
+    lines += _rule_lines(table)
     tmp = path + ".tmp"
     with open(tmp, "w", newline="") as fh:
         w = csv.writer(fh)
@@ -355,6 +382,50 @@ def _difference_line(row: str, d: dict, target: str, kind: str, geometry: str, m
             "uses_not_converged_geometry": "yes" if d["marked"] else "",
             "difference_kcal_per_mol": d["text"] if d["text"] else "%.6f" % d["value"],
             "difference_error_kcal_per_mol": "" if d["text"] else "%.6f" % d["error"]}
+
+
+def _rule_lines(table: dict) -> List[Dict[str, object]]:
+    """The CSV lines of the two tests of the size of the expansion: ``against hf`` and ``convergence``."""
+    ev, statuses, kinds = table["evaluation"], table["statuses"], table["kinds"]
+    lines: List[Dict[str, object]] = []
+    usable = {cut["label"]: cut["status"] for cut in ev["usability"]}
+    for line in ev["against_hf"]:
+        available = line["state"] != R.NOT_AVAILABLE
+        lines.append({
+            "row": "against hf", "target": line["target"], "kind": line["kind"], "geometry": line["geometry"],
+            "cutoff": cutoff_text(line["cutoff"]), "n_det_max": _number(line["n_det_max"], "%d"),
+            "n_det_cipsi": _number(line["n_det_parent"], "%d"), "n_det": _number(line["n_det"], "%d"),
+            "search_status": line["search_status"], "uses_not_converged_geometry": "yes" if line["marked"] else "",
+            "dmc_minus_hf_millihartree": "%.6f" % line["delta"] if available else "",
+            "dmc_minus_hf_error_millihartree": "%.6f" % line["error"] if available else "",
+            "against_hf": line["state"] if available else "%s: %s" % (R.NOT_AVAILABLE, line["reason"]),
+            "cutoff_usable": usable[line["label"]]})
+    if len(ev["usability"]) < 2:                # one numeric cutoff cannot show convergence
+        return lines
+    auto = table.get("auto") or {}
+    project = {"row": "convergence", "tolerance_kcal_per_mol": "%.6f" % ev["tolerance"], "project_verdict": ev["verdict"],
+               "project_verdict_reason": ev["reason"],
+               "automatic_final_verdict": str(auto.get("verdict") or "") if auto.get("final") else ""}
+    if ev["pair"]:
+        project.update(coarse_cutoff=cutoff_text(ev["pair"][0]), fine_cutoff=cutoff_text(ev["pair"][1]))
+    for d in ev["differences"]:
+        line = dict(project, target=d["target"], kind=kinds.get(d["target"], ""), geometry=d["geometry"],
+                    minus_target=d["minus_target"] or "", search_status=statuses.get(d["target"], ""),
+                    minus_target_search_status=statuses.get(d["minus_target"], "") if d["minus_target"] else "",
+                    uses_not_converged_geometry="yes" if d["marked"] else "")
+        if d["verdict"] is None:
+            line["verdict"] = NOT_COMPARABLE + str(d["reason"])
+        else:
+            line.update(difference_coarse_kcal_per_mol="%.6f" % d["coarse"],
+                        difference_coarse_error_kcal_per_mol="%.6f" % d["coarse_error"],
+                        difference_fine_kcal_per_mol="%.6f" % d["fine"],
+                        difference_fine_error_kcal_per_mol="%.6f" % d["fine_error"],
+                        change_fine_minus_coarse_kcal_per_mol="%.6f" % d["S"], change_error_kcal_per_mol="%.6f" % d["e"],
+                        bound_kcal_per_mol="%.6f" % d["bound"], verdict=d["verdict"])
+        lines.append(line)
+    if not ev["differences"]:
+        lines.append(project)
+    return lines
 
 
 def _pm(value: Optional[float], error: Optional[float]) -> str:
@@ -375,6 +446,132 @@ def _files_sentence(rows: Sequence[dict]) -> str:
     return "Quantum Package 2 (QP2) of these rows: %s." % "; ".join(parts)
 
 
+def _against_hf_md(table: dict) -> List[str]:
+    """The section "DMC energy against the single RHF determinant" (step 1 of the rule). Empty for a stage
+    without a row ``hf`` or without a numeric cutoff."""
+    ev = table["evaluation"]
+    if not ev["hf"]:
+        return []
+    L: List[str] = ["## DMC energy against the single RHF determinant", ""]
+    body = []
+    for line in ev["against_hf"]:
+        available = line["state"] != R.NOT_AVAILABLE
+        body.append([line["target"], line["geometry"] + (MARK if line["marked"] else ""), cutoff_text(line["cutoff"]),
+                     _number(line["n_det"], "%d") or "not available",
+                     R.pm_text(line["delta"], line["error"]) if available else "not available",
+                     line["state"] if available else "%s: %s" % (R.NOT_AVAILABLE, line["reason"])])
+    L += _md_table(["target", "geometry", "cutoff", "N_det",
+                    "DMC energy minus that of the single RHF determinant (millihartree)", "result"], body)
+    for cut in ev["usability"]:
+        mine = [line for line in ev["against_hf"] if line["label"] == cut["label"]]
+        where = {state: ", ".join("%s %s" % (line["target"], line["geometry"]) for line in mine if line["state"] == state)
+                 for state in (R.ABOVE, R.NOT_AVAILABLE)}
+        if cut["status"] == R.USABLE:
+            detail = "not above at %s" % ("its geometry" if len(mine) == 1 else "any of its %d geometries" % len(mine))
+        elif cut["status"] == R.NOT_USABLE:
+            detail = "above at %s" % where[R.ABOVE]
+        else:
+            detail = "not available at %s" % (where[R.NOT_AVAILABLE] or "every geometry")
+        L.append("- Cutoff %s: %s (%s)." % (cutoff_text(cut["cutoff"]), cut["status"], detail))
+    L += ["", AGAINST_HF, ""]
+    notes = []
+    for r in table["rows"]:
+        ratio = _ratio(r)
+        if r["cutoff"] != HF_LABEL and ratio is not None and ratio < R.PARENT_RATIO_NOTE:
+            notes.append("- Note: at %s %s the cut %s holds %d of the %d determinants of its CIPSI wave function. The CIPSI "
+                         "wave function is only %s times larger (less than %g times), so this cut depends on n_det_max."
+                         % (r["target"], r["geometry"], cutoff_text(_used(r, "cutoff")), _fact(r, "n_det"),
+                            _fact(r, "n_det_parent"), _ratio_cut(r), R.PARENT_RATIO_NOTE))
+    return L + (notes + [""] if notes else [])
+
+
+def _convergence_md(table: dict) -> List[str]:
+    """The section "Convergence with the size of the expansion" (steps 2 to 4 of the rule). Empty for a stage
+    with fewer than two numeric cutoffs."""
+    ev = table["evaluation"]
+    if len(ev["usability"]) < 2:
+        return []
+    L: List[str] = ["## Convergence with the size of the expansion", ""]
+    if not ev["hf"]:                            # the second sentence only when two cutoffs are in fact compared
+        L += [NO_HF_ROW + (" So the two smallest cutoffs of the list are compared." if ev["pair"] else ""), ""]
+    if ev["pair"]:
+        coarse, fine = cutoff_text(ev["pair"][0]), cutoff_text(ev["pair"][1])
+        L += ["The two %scutoffs with the smallest values are compared: %s (coarse: fewer determinants) and %s (fine). "
+              "Tolerance: %s kcal/mol ([trial] tolerance)."
+              % ("usable " if ev["hf"] else "", coarse, fine, R.number_text(ev["tolerance"])), ""]
+        body = []
+        for d in ev["differences"]:
+            name = d["name"] + (MARK if d["marked"] else "")
+            if d["verdict"] is None:
+                body.append([name] + ["not available"] * 4 + [NOT_COMPARABLE + str(d["reason"])])
+            else:
+                body.append([name, fmt_pm(d["coarse"], d["coarse_error"]), fmt_pm(d["fine"], d["fine_error"]),
+                             R.pm_text(d["S"], d["e"]), R.bound_text(d), d["verdict"]])
+        L += _md_table(["energy difference", "at the cutoff %s (kcal/mol)" % coarse, "at the cutoff %s (kcal/mol)" % fine,
+                        "change: fine minus coarse (kcal/mol)", "bound (kcal/mol)", "verdict"], body)
+        L += [CONVERGENCE_COLUMNS, ""]
+    L += ["Verdict of the project: %s. Reason: %s." % (ev["verdict"], ev["reason"]), "",
+          R.MEANING_TEXT, "", R.TOTAL_ENERGIES_TEXT, ""]
+    if not table.get("auto"):
+        L += [MANUAL_MODE, ""]
+    return L
+
+
+def _automatic_md(table: dict) -> List[str]:
+    """The section "Automatic choice of the cutoff": the rule, the values of the input, every decision of the
+    record, the final verdict and the result. Empty for a project of the manual mode."""
+    auto = table.get("auto")
+    if not auto:
+        return []
+    t = table["rule"].get("trial") or {}
+    L: List[str] = ["## Automatic choice of the cutoff", "", R.RULE_TEXT, ""]
+    L += ["Ladder ([trial] auto_cutoffs): %s. Tolerance: %s kcal/mol. DMC series: %s at the start and at most %s. The plan "
+          "of the stage now holds the cutoffs %s and hf with %d DMC series for each geometry and each cutoff."
+          % (", ".join(cutoff_text(c) for c in auto.get("ladder") or []), R.number_text(float(auto.get("tolerance") or 0.0)),
+             t.get("series"), auto.get("series_max"), ", ".join(cutoff_text(c) for c in auto.get("cutoffs") or []),
+             int(auto.get("series") or 0)), ""]
+    decisions = list(auto.get("decisions") or [])
+    if decisions:
+        L += ["Decisions of the stage, in the order in which they were made:", ""]
+        now = [float(c) for c in auto.get("ladder") or []]
+
+        def then(entry: dict) -> str:
+            """One sentence for a decision that was made with another ladder than the one of the input now."""
+            was = entry.get("ladder")
+            if not was or [float(c) for c in was] == now:     # no ladder, or an empty one: nothing to say
+                return ""
+            return " The ladder of the input was then %s." % ", ".join(cutoff_text(c) for c in was)
+
+        def after(i: int, entry: dict) -> str:
+            """One sentence for a final decision that another decision follows: the input changed in between."""
+            if entry.get("action") != R.FINAL or i == len(decisions):
+                return ""
+            return " After this decision the values of [trial] changed, and the stage decided again."
+        L += ["%d. %s: %s%s%s" % (i, entry.get("time", ""), R.decision_text(entry, cutoff_text), then(entry), after(i, entry))
+              for i, entry in enumerate(decisions, start=1)]
+        L.append("")
+    else:
+        L += ["The stage has made no decision yet: it decides when every DMC run of its plan is DONE.", ""]
+    if not (auto.get("final") and decisions):
+        changed = bool(decisions) and decisions[-1].get("action") == R.FINAL
+        L += ["No final verdict yet: the stage has not ended.%s"
+              % (" The values of [trial] changed after the last decision, so the stage decides again." if changed else ""), ""]
+        return L
+    last = decisions[-1]
+    L += ["Final verdict: %s." % R.final_text(last, cutoff_text), ""]
+    if not last.get("pair"):
+        return L + ["Result: this verdict gives no energy difference at a fine cutoff.", ""]
+    L += ["Result: the energy differences of the project are those at the fine cutoff %s." % cutoff_text(last["pair"][1]), ""]
+    for d in last["differences"]:
+        name = d["name"] + (MARK if _uses_not_converged(d, table["statuses"]) else "")
+        if d["verdict"] is None:
+            L.append("- %s: no value (%s%s)" % (name, NOT_COMPARABLE, d["reason"]))
+        else:
+            L.append("- %s: %s kcal/mol (%s; bound %s kcal/mol)" % (
+                name, fmt_pm(d["fine"], d["fine_error"]), d["verdict"], R.bound_text(d)))
+    return L + [""]
+
+
 def write_md(table: dict, path: str) -> None:
     """The same content as the CSV file in tables, with the rules in plain sentences."""
     rule = table["rule"]
@@ -383,12 +580,29 @@ def write_md(table: dict, path: str) -> None:
     L: List[str] = ["# %s: DMC energies with several determinants" % table["title"], "",
                     "Written %s. Every error bar is 1 standard error. The energy of one geometry is in hartree. "
                     "Energy differences are in kcal/mol." % table["written"], "", str(rule.get("text", "")), ""]
-    if t:
+    auto = table.get("auto")
+    tolerance = R.number_text(table["evaluation"]["tolerance"])
+    if t and auto:
+        L += ["Values of the input section [trial]: n_det_max = %s; cutoff = auto with the ladder %s (auto_cutoffs); "
+              "tolerance = %s kcal/mol; %s DMC series at the start and at most %s (series and series_max), of %s blocks "
+              "each, for each geometry and each cutoff; basis file %s and pseudopotential file %s of Quantum Package; "
+              "not_converged = %s. The plan of the stage now holds the cutoffs %s and hf with %d DMC series."
+              % (t.get("n_det_max"), ", ".join(cutoff_text(c) for c in auto.get("ladder") or []), tolerance,
+                 t.get("series"), auto.get("series_max"), rule.get("blocks"), t.get("qp2_basis"), t.get("qp2_pseudo"),
+                 t.get("not_converged", "stop"), ", ".join(cutoff_text(c) for c in auto.get("cutoffs") or []),
+                 int(auto.get("series") or 0)), ""]
+    elif t:
         L += ["Values of the input section [trial]: n_det_max = %s; cutoff = %s; %s DMC series of %s blocks for each "
               "geometry and each cutoff; basis file %s and pseudopotential file %s of Quantum Package; not_converged "
-              "= %s." % (t.get("n_det_max"), ", ".join(cutoff_text(c) for c in t.get("cutoffs") or []), t.get("series"),
-                         rule.get("blocks"), t.get("qp2_basis"), t.get("qp2_pseudo"), t.get("not_converged", "stop")), ""]
+              "= %s; tolerance = %s kcal/mol."
+              % (t.get("n_det_max"), ", ".join(cutoff_text(c) for c in t.get("cutoffs") or []), t.get("series"),
+                 rule.get("blocks"), t.get("qp2_basis"), t.get("qp2_pseudo"), t.get("not_converged", "stop"), tolerance), ""]
     L += ["Search status of every target: %s." % ", ".join("%s %s" % kv for kv in table["statuses"].items()), ""]
+    # the note is printed also while other runs still write blocks: the message of the stage then names the runs
+    # that need attention when the others have ended
+    stage_status, stage_message = str(table.get("stage_status") or ""), str(table.get("stage_message") or "")
+    if stage_status == NEEDS_ATTENTION or (stage_status != DONE and "need attention" in stage_message):
+        L += [ATTENTION_NOTE % (stage_status, (stage_message or "no message").rstrip(".")), ""]
     for name, note in table["notes"].items():
         if note:
             L.append("- Target %s: %s." % (name, note))
@@ -452,6 +666,16 @@ def write_md(table: dict, path: str) -> None:
     if table["left_plan"]:
         L += ["%d DMC run(s) of an older plan of the stage (a value of [trial] changed) are not in these tables; they "
               "used %.1f core-hours." % (len(table["left_plan"]), table["cost_left_plan"]), ""]
+
+    # the size of the expansion: each cut against the single determinant, the convergence of every difference,
+    # and (automatic mode) what the stage decided
+    L += _against_hf_md(table) + _convergence_md(table) + _automatic_md(table)
+    if len(table["evaluation"]["usability"]) == 1:
+        # one numeric cutoff: no convergence section exists. What that section says in every report stands here:
+        # whether the cut was tested against the single determinant, and the sentence about total energies
+        if not table["evaluation"]["hf"]:
+            L += [NO_HF_ROW, ""]
+        L += [R.TOTAL_ENERGIES_TEXT, ""]
 
     not_converged = [n for n, s in table["statuses"].items() if s == NOT_CONVERGED]
     warning = ("The search of target(s) %s ended NOT_CONVERGED: it did not reach its precision target. A row or a value "

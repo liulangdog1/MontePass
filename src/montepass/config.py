@@ -108,15 +108,28 @@ jastrow_reuse = centre
 ; multidet = when the search of every target has ended: DMC energies with a trial wave function of several
 ;            determinants (from Quantum Package 2) at the start geometry and at the final geometry of every target
 kind = single
-; size of the CIPSI wave function of each geometry: a whole number, at least 2. Needed for multidet, unless every
-; cutoff is hf.
+; size of the CIPSI wave function of each geometry: a whole number, at least 2. With a list of cutoffs it is
+; needed, unless every cutoff is hf. With cutoff = auto an empty value means 100000.
 n_det_max =
-; one value, or several values separated by commas. Each value is a number between 0 and 1 (Quantum Package
-; setting ci_threshold: a smaller number keeps more determinants of the CIPSI wave function), or the word hf
-; (the single RHF determinant of Quantum Package). Needed for multidet.
+; Needed for multidet. Either the word auto, or a list that you choose.
+; auto = the package chooses the cutoffs. It starts with the first two cutoffs of auto_cutoffs and with hf, tests
+;        each cut against the single determinant, tests whether every tested energy difference is converged with the
+;        size of the expansion, and adds DMC series or the next cutoff of auto_cutoffs when the test needs them
+;        (docs/multireference.md, section 10).
+; A list = one value, or several values separated by commas. Each value is a number between 0 and 1 (Quantum
+;        Package setting ci_threshold: a smaller number keeps more determinants of the CIPSI wave function), or
+;        the word hf (the single RHF determinant of Quantum Package).
 cutoff =
-; independent DMC runs for each geometry and each cutoff (at least 1)
+; only with cutoff = auto: the cutoffs that the package may use, in the order of their use. At least 2 numbers
+; between 0 and 1, each smaller than the one before it
+auto_cutoffs = 2.5e-4, 1e-4, 5e-5
+; kcal/mol, larger than 0: an energy difference counts as converged between two cutoffs when the size of its
+; change plus 2 standard errors is at most this value
+tolerance = 1.0
+; independent DMC runs for each geometry and each cutoff (at least 1). With cutoff = auto: the number at the start
 series = 2
+; only with cutoff = auto: the largest number of DMC runs for each geometry and each cutoff (at least series)
+series_max = 4
 ; names of the basis file and of the pseudopotential file of Quantum Package. auto = chosen from [qmc] basis and ecp
 qp2_basis = auto
 qp2_pseudo = auto
@@ -171,6 +184,7 @@ _METHODS = ("classic", "dense-v1", "dense-v2", "auto")
 _QMC_MODES = ("auto", "fixed", "iterative")
 _TRIAL_KINDS = ("single", "multidet")
 _NOT_CONVERGED = ("stop", "run")
+AUTO_N_DET_MAX = 100000        # [trial] cutoff = auto with an empty n_det_max: the size of the CIPSI wave function
 # [trial] qp2_basis = auto and qp2_pseudo = auto: the file of Quantum Package 2 for a PySCF name of [qmc]
 _QP2_BASIS = {"ccecpccpvdz": "cc-pvdz_ecp_ccecp", "ccecpccpvtz": "cc-pvtz_ecp_ccecp",
               "ccecpccpvqz": "cc-pvqz_ecp_ccecp", "ccecpccpv5z": "cc-pv5z_ecp_ccecp"}
@@ -205,10 +219,21 @@ def _trial_settings(get: Callable[[str, str], str], number: Callable[..., float]
                     multiplicity: int, basis: str, ecp: str) -> Dict[str, object]:
     """The values of section ``[trial]`` for ``kind = multidet``. Every problem is added to ``problems``.
 
-    Returns ``{"kind": "multidet", "n_det_max", "cutoffs", "series", "qp2_basis", "qp2_pseudo", "not_converged"}``.
-    ``cutoffs`` is a list in the order of the input; each entry is a number between 0 and 1 or the word ``hf``.
-    ``n_det_max`` is None when the input gives none. ``get`` and ``number`` are the readers of :class:`Config`;
-    ``basis`` and ``ecp`` are the values of ``[qmc]``."""
+    Returns ``{"kind": "multidet", "n_det_max", "cutoffs", "series", "qp2_basis", "qp2_pseudo", "not_converged",
+    "tolerance", "series_max", "auto"}``. ``get`` and ``number`` are the readers of :class:`Config`; ``basis`` and
+    ``ecp`` are the values of ``[qmc]``.
+
+    The manual mode (``cutoff`` is a list): ``cutoffs`` is that list in the order of the input; each entry is a
+    number between 0 and 1 or the word ``hf``. ``n_det_max`` is None when the input gives none. ``series_max``
+    equals ``series`` and ``auto`` is None; the keys ``auto_cutoffs`` and ``series_max`` of the input are not read.
+
+    The automatic mode (``cutoff = auto``; the word must stand alone): ``auto`` is ``{"ladder": [...]}`` with
+    the numbers of ``auto_cutoffs``. ``cutoffs`` is the plan of the first pass of the stage: the first two
+    cutoffs of the ladder, then ``hf``. An empty ``n_det_max`` means ``AUTO_N_DET_MAX``. ``series`` is the
+    number of DMC series at the start, ``series_max`` the largest number.
+
+    ``tolerance`` (kcal/mol) is read in both modes: the report tests the convergence with the size of the
+    expansion in both."""
     from .engine import multidet as MD          # imported late: an input without this option does not need the engine
 
     known = len(problems)
@@ -229,36 +254,89 @@ def _trial_settings(get: Callable[[str, str], str], number: Callable[..., float]
                 problems.append("[trial] n_det_max = %d must be at least 2" % n_det_max)
     words = [w.strip() for w in get("trial", "cutoff").split(",") if w.strip()]
     if not words:
-        problems.append("[trial] cutoff is needed for kind = multidet: a number between 0 and 1, or hf")
-    cutoffs: List[object] = []
-    names: Dict[str, str] = {}                  # short name of a cutoff (it names folders) -> the word of the input
-    for word in words:
-        if word.lower() == "auto":
-            problems.append("[trial] cutoff = auto is not built yet: give a number between 0 and 1, or hf")
-            continue
-        if word.lower() == MD.HF_LABEL:
-            value: object = MD.HF_LABEL
-        else:
-            try:
-                number_of_word = float(word)
-            except ValueError:
-                problems.append("[trial] cutoff = %r is not a number and not the word hf" % word)
+        problems.append("[trial] cutoff is needed for kind = multidet: the word auto, or a list of numbers between 0 "
+                        "and 1 and the word hf")
+    automatic = any(w.lower() == "auto" for w in words)
+    if automatic and len(words) > 1:
+        problems.append("[trial] cutoff = %s: the word auto must stand alone. With auto the package chooses the cutoffs "
+                        "from [trial] auto_cutoffs; a list of numbers and hf is the manual mode"
+                        % get("trial", "cutoff"))
+
+    def cutoff_list(key: str, given: List[str], hf_allowed: bool) -> List[object]:
+        """The cutoffs that the words of one key name. Every word that cannot be used is a problem line."""
+        out: List[object] = []
+        names: Dict[str, str] = {}              # short name of a cutoff (it names folders) -> the word of the input
+        for word in given:
+            if word.lower() == "auto":          # the problem line for this word is written above
                 continue
-            if not 0.0 < number_of_word < 1.0:
-                problems.append("[trial] cutoff = %s must be between 0 and 1 (0 and 1 themselves are not allowed)" % word)
+            if word.lower() == MD.HF_LABEL:
+                if not hf_allowed:
+                    problems.append("[trial] %s = %s: the word hf is not allowed here. The automatic mode always "
+                                    "computes hf, the single RHF determinant" % (key, word))
+                    continue
+                value: object = MD.HF_LABEL
+            else:
+                try:
+                    number_of_word = float(word)
+                except ValueError:
+                    problems.append("[trial] %s = %r is not a number%s" % (key, word, " and not the word hf" if hf_allowed else ""))
+                    continue
+                if not 0.0 < number_of_word < 1.0:
+                    problems.append("[trial] %s = %s must be between 0 and 1 (0 and 1 themselves are not allowed)" % (key, word))
+                    continue
+                value = number_of_word
+            label = MD.cut_label(value)
+            if label in names:
+                problems.append("[trial] %s lists the same cutoff twice: %s and %s (this package tells two cutoffs "
+                                "apart by their first %d significant digits)" % (key, names[label], word, MD.CUT_DIGITS))
                 continue
-            value = number_of_word
-        label = MD.cut_label(value)
-        if label in names:
-            problems.append("[trial] cutoff lists the same cutoff twice: %s and %s (this package tells two cutoffs "
-                            "apart by their first %d significant digits)" % (names[label], word, MD.CUT_DIGITS))
-            continue
-        names[label] = word
-        cutoffs.append(value)
-    if not raw and any(c != MD.HF_LABEL for c in cutoffs):
-        problems.append("[trial] n_det_max is needed for a numeric cutoff: the size of the CIPSI wave function, a "
-                        "whole number of at least 2")
+            names[label] = word
+            out.append(value)
+        return out
+
+    auto: Optional[Dict[str, object]] = None
+    if automatic and len(words) == 1:
+        given = [w.strip() for w in get("trial", "auto_cutoffs").split(",") if w.strip()]
+        before = len(problems)
+        ladder = [float(c) for c in cutoff_list("auto_cutoffs", given, hf_allowed=False)]
+        if len(problems) == before:             # every word is a usable number: now the rules for the whole list
+            if len(ladder) < 2:
+                problems.append("[trial] auto_cutoffs = %s holds %d cutoff(s); the automatic mode needs at least 2, "
+                                "because it compares the energy differences of two cutoffs"
+                                % (get("trial", "auto_cutoffs") or "(empty)", len(ladder)))
+            for larger, smaller in zip(ladder, ladder[1:]):
+                if not smaller < larger:
+                    problems.append("[trial] auto_cutoffs = %s must be strictly decreasing: %g comes after %g, but it "
+                                    "is not smaller" % (get("trial", "auto_cutoffs"), smaller, larger))
+                    break
+        if not raw:
+            n_det_max = AUTO_N_DET_MAX
+        auto = {"ladder": ladder}
+        cutoffs: List[object] = ladder[:2] + [MD.HF_LABEL]
+        tested: List[object] = ladder + [MD.HF_LABEL]       # every cutoff that the stage can ask the engine for
+    else:
+        cutoffs = cutoff_list("cutoff", words, hf_allowed=True)
+        tested = list(cutoffs)
+        if not raw and any(c != MD.HF_LABEL for c in cutoffs):
+            problems.append("[trial] n_det_max is needed for a numeric cutoff: the size of the CIPSI wave function, a "
+                            "whole number of at least 2")
     series = int(number("trial", "series", int, low=1))
+    series_max = series
+    if auto is not None:
+        series_max = int(number("trial", "series_max", int, low=1))
+        if 1 <= series_max < series:
+            problems.append("[trial] series_max = %d must be at least series = %d (series is the number of DMC series "
+                            "at the start, series_max the largest number)" % (series_max, series))
+    raw_tolerance = get("trial", "tolerance")
+    tolerance = 0.0
+    try:
+        tolerance = float(raw_tolerance)
+    except ValueError:
+        problems.append("[trial] tolerance = %r is not a number" % raw_tolerance)
+    else:
+        if not 0.0 < tolerance < float("inf"):
+            problems.append("[trial] tolerance = %s must be larger than 0 (kcal/mol: the largest change of an energy "
+                            "difference between two cutoffs that counts as converged)" % raw_tolerance)
     not_converged = get("trial", "not_converged").lower()
     if not_converged not in _NOT_CONVERGED:
         problems.append("[trial] not_converged = %r; allowed: %s" % (get("trial", "not_converged"), ", ".join(_NOT_CONVERGED)))
@@ -278,7 +356,7 @@ def _trial_settings(get: Callable[[str, str], str], number: Callable[..., float]
         files[key] = chosen
     if len(problems) == known:
         # the check of the engine itself: an input that is accepted here must be accepted there
-        for cutoff in cutoffs:
+        for cutoff in tested:
             try:
                 MD.validate_trial(MD.trial_of({"trial": dict(files, kind="multidet", cutoff=cutoff, n_det_max=n_det_max)}),
                                   charge, multiplicity - 1)
@@ -286,7 +364,8 @@ def _trial_settings(get: Callable[[str, str], str], number: Callable[..., float]
                 problems.append("[trial] %s" % exc)
                 break
     return {"kind": "multidet", "n_det_max": n_det_max, "cutoffs": cutoffs, "series": series,
-            "qp2_basis": files["qp2_basis"], "qp2_pseudo": files["qp2_pseudo"], "not_converged": not_converged}
+            "qp2_basis": files["qp2_basis"], "qp2_pseudo": files["qp2_pseudo"], "not_converged": not_converged,
+            "tolerance": tolerance, "series_max": series_max, "auto": auto}
 
 
 class Config:

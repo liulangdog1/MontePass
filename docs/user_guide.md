@@ -16,15 +16,23 @@ every calculation as a batch job.
 
 Tested versions:
 
-- Unit tests: with the versions of `requirements.txt` (development computer, Python 3.9.6 and 3.12.2)
-  and of `requirements-cluster.txt` (the cluster of the system tests: Python 3.9.21, numpy 1.26.4,
-  scipy 1.10.1, matplotlib 3.7.1, pillow 9.5.0, PySCF 2.1.1, h5py 3.8.0).
+- Unit tests of version 0.1.0: with the versions of `requirements.txt` (development computer, Python
+  3.9.6 and 3.12.2) and of `requirements-cluster.txt` (the cluster of the system tests: Python
+  3.9.21, numpy 1.26.4, scipy 1.10.1, matplotlib 3.7.1, pillow 9.5.0, PySCF 2.1.1, h5py 3.8.0). For
+  version 0.2.0: the whole suite on the cluster (the item after the next one), and 5 test files on
+  the development computer with Python 3.9.6 (`tests/test_trial_auto.py`, `tests/test_trial_stage.py`,
+  `tests/test_report.py`, `tests/test_multidet.py`, `tests/test_workflow_model.py`).
 - A fresh install on the cluster on 2026-11-26: a new clone of version 0.1.0 in a new virtual
   environment of Python 3.13.5. After `pip install -e .` all 551 unit tests passed; PySCF and h5py
   were not installed yet (the unit tests do not need them). Then `pip install pyscf h5py`. After this
   second install the environment held numpy 2.5.5, scipy 1.18.1, matplotlib 3.11.2, pillow 13.0.0,
   PySCF 2.15.1 and h5py 3.16.0, and all 4 examples ran ([examples/README.md](../examples/README.md)).
   These versions were read after the second install, not at the time of the unit tests.
+- An install of the code of version 0.2.0 on the cluster on 2026-11-27, in a new virtual
+  environment of Python 3.13.5 with numpy 2.5.5, scipy 1.18.1, PySCF 2.15.1 and h5py 3.16.0: all 632
+  unit tests of the final code passed. The examples `water_multidet` and `ammonia_inversion` ran
+  with `[trial] cutoff = auto` and the ladder 2.5e-4, 1e-4 (the default of that day), with the
+  code of that day before its last corrections ([examples/README.md](../examples/README.md)).
 - Cluster programs of the test runs: ORCA 6.1.0, QMCPACK 4.1.9 (a development build; the inputs that
   the package writes use the legacy drivers) and, for the stage with several determinants, Quantum
   Package 2.
@@ -111,7 +119,9 @@ old waits up to 4 minutes, then ends with exit code 98. The file `docs/multirefe
 every step, check and message of these jobs.
 
 With `[trial] kind = multidet`, the command `check` also lists what the profile lacks for QP2, and it
-prints the plan of the stage: the number of geometries, QP2 calculations, cutoffs and DMC runs.
+prints the plan of the stage: the number of geometries, QP2 calculations, cutoffs and DMC runs. With
+`cutoff = auto` the plan names the ladder, the tolerance, the number of DMC series at the start and
+the largest number, and it gives the number of DMC runs at the start and at most.
 
 ## 3. The input file
 
@@ -175,21 +185,35 @@ minimal input names only the geometry files.
 This section asks for DMC energies with several determinants. The package computes these energies
 after the geometry search. The geometry search itself always uses one determinant.
 
-This stage is experimental. In the tests, the short expansions of the cutoff 1e-3 gave DMC energies
-above those of the single RHF determinant for water and ammonia; for HCN, and with the cutoff 1e-4
-for all three molecules, the energies were below. The cause was not investigated
-([multireference.md](multireference.md), section 9, gives all measured values).
+This stage is experimental. A short expansion can give a DMC energy above that of one determinant.
+For water and ammonia the cuts at 1e-3 and 5e-4 gave DMC energies 2.14 to 3.15 millihartree above the
+single RHF determinant (standard errors 0.37 to 0.40 millihartree). The cuts at 2.5e-4 and 1e-4 gave
+energies 0.78 to 4.05 millihartree below it (standard errors 0.34 to 0.39 millihartree). The measured
+cause: the coefficients of the determinants come from Quantum Package without a Jastrow factor, and
+the package does not optimize them again ([multireference.md](multireference.md), section 9, gives
+all measured values).
+
+With `cutoff = auto` the package chooses the cutoffs itself. It tests each cut against the single
+determinant, tests whether every tested energy difference (the energy change of every target that
+the search moved, and every barrier at the start geometries and at the final geometries) is
+converged with the size of the expansion, adds DMC series or the next cutoff when the test cannot
+decide or finds a change above the tolerance, and reports a verdict
+([multireference.md](multireference.md), section 10). With a list of cutoffs the report makes the
+same two tests, but the package adds no run by itself.
 
 | Key | Default | Meaning |
 |---|---|---|
 | `kind` | `single` | `single`: nothing more is computed, and the other keys of this section are not read. `multidet`: the workflow gets one more stage, `trial`, between the stages `search` and `report`. |
-| `n_det_max` | empty | size of the CIPSI wave function of each geometry: a whole number, at least 2. Needed unless every cutoff is `hf`. |
-| `cutoff` | empty | one value, or several values separated by commas, for example `1e-3, 1e-4, hf`. A number between 0 and 1 is the Quantum Package setting `ci_threshold`: Quantum Package removes every determinant whose alpha part or beta part has a summed weight below this number. A smaller number keeps more determinants. The word `hf` means the single RHF determinant of Quantum Package. Needed for `multidet`. |
-| `series` | 2 | number of independent DMC runs for each geometry and each cutoff (at least 1). The random numbers of QMCPACK set an upper limit: 16 series with 32 MPI ranks, 8 with 64, 4 with 128. The command `check` reports a number that is too large. |
+| `cutoff` | empty | needed for `multidet`. The word `auto`: the automatic mode (the word must stand alone). Or a list that you choose (the manual mode): one value, or several values separated by commas, for example `2.5e-4, 1e-4, hf`. A number between 0 and 1 is the Quantum Package setting `ci_threshold`: Quantum Package removes every determinant whose alpha part or beta part has a summed weight below this number. A smaller number keeps more determinants. The word `hf` means the single RHF determinant of Quantum Package. |
+| `n_det_max` | empty | size of the CIPSI wave function of each geometry: a whole number, at least 2. With a list of cutoffs it is needed, unless every cutoff is `hf`. With `cutoff = auto` an empty value means 100000. `n_det_max = auto` is not built. |
+| `auto_cutoffs` | `2.5e-4, 1e-4, 5e-5` | only with `cutoff = auto`: the ladder, which holds the cutoffs that the package may use, in the order of their use. At least 2 numbers between 0 and 1, each smaller than the one before it; no `hf`. |
+| `tolerance` | 1.0 | kcal/mol, larger than 0. An energy difference counts as converged between two cutoffs when the size of its change plus 2 standard errors is at most this value. The report uses it in both modes. |
+| `series` | 2 | number of independent DMC runs for each geometry and each cutoff (at least 1). With `cutoff = auto`: the number at the start. The random numbers of QMCPACK set an upper limit: 16 series with 32 MPI ranks, 8 with 64, 4 with 128. The command `check` reports a number that is too large. |
+| `series_max` | 4 | only with `cutoff = auto`: the largest number of DMC runs for each geometry and each cutoff. At least `series`. The upper limit of `series` holds for this number. |
 | `qp2_basis`, `qp2_pseudo` | `auto` | names of the basis file and of the pseudopotential file of Quantum Package. `auto` chooses them from `[qmc] basis` and `ecp` (table below). For any other basis, write the name of the Quantum Package file here. |
 | `not_converged` | `stop` | what happens when the search of a target ended `NOT_CONVERGED` (it did not reach its precision target). `stop`: the stage does not start, and the project needs attention. `run`: the stage runs, and the tables mark every value that uses the final geometry of such a target. |
 
-What `auto` chooses:
+What `qp2_basis = auto` chooses:
 
 | `[qmc] basis` | `qp2_basis` |
 |---|---|
@@ -200,10 +224,57 @@ What `auto` chooses:
 
 `[qmc] ecp = ccecp` gives `qp2_pseudo = ccecp`.
 
-What the stage `trial` does. The stage starts when the search of every target has ended. The stage
-takes two geometries of every target: the start geometry and the final geometry of the search. If
-the search did not move a geometry (the two are equal within 0.000001 angstrom), only the start
-geometry is computed. For every geometry:
+The smallest input of the automatic mode:
+
+```
+[trial]
+kind = multidet
+cutoff = auto
+```
+
+An input of the manual mode:
+
+```
+[trial]
+kind = multidet
+n_det_max = 100000
+cutoff = 2.5e-4, 1e-4, hf
+```
+
+What the automatic mode does. The stage starts with the first two cutoffs of `auto_cutoffs` and with
+`hf`, with `series` DMC runs for each geometry and each cutoff. When all these runs are done, it
+applies the rule of [multireference.md](multireference.md), section 10:
+
+- A cut whose DMC energy is above that of `hf` by more than 2 standard errors at a geometry is not
+  usable.
+- Every tested energy difference is compared at the two smallest usable cutoffs. `CONVERGED`: for
+  every tested difference, the size of its change plus 2 standard errors is at most `tolerance`. The
+  stage then ends, also when a smaller cutoff of the plan is above `hf` by at most 3 standard errors.
+- If the verdict is `NOT_CONVERGED` or `NOT_DECIDED`, a cutoff is above by at most 3 standard errors, and the number
+  of series is below `series_max`, every row gets one more DMC series, so that this result is tested
+  again with more data. The stage does this only when more data can change the two cutoffs that are
+  compared: the cutoff is above by more than 3 standard errors at no geometry, fewer than two usable
+  cutoffs have a smaller value, and two cutoffs can then be compared
+  ([multireference.md](multireference.md), section 10, decision 4).
+- `NOT_CONVERGED` (a difference changes by more than `tolerance`, with 2 standard errors of margin,
+  or fewer than two cutoffs are usable): the next cutoff of `auto_cutoffs` is added. If there is
+  none, the stage ends with this verdict.
+- `NOT_DECIDED` (the test can say neither): every row gets one more DMC series, up to
+  `series_max`. Then the stage estimates the errors that a smaller cutoff would give. If they are
+  too large for the verdict `CONVERGED`, the stage ends, and its message says to raise `series_max`. Else the next
+  cutoff of `auto_cutoffs` is added; if there is none, the stage ends, and its message says to add
+  one ([multireference.md](multireference.md), section 10, decision 6).
+
+The stage is `DONE` after its last decision, whatever the verdict is: a verdict is a result, not a
+failure. The message of the stage ends with the verdict, and the command `status` shows it.
+`CONVERGED` is a statement about the two cutoffs that were compared. It does not prove that a much
+larger expansion gives the same value. Total energies are not converged at the first two default cutoffs; the
+test is about energy differences only.
+
+What the stage `trial` does for one cutoff. The stage starts when the search of every target has
+ended. The stage takes two geometries of every target: the start geometry and the final geometry of
+the search. If the search did not move a geometry (the two are equal within 0.000001 angstrom), only
+the start geometry is computed. For every geometry:
 
 1. Quantum Package computes RHF orbitals and one CIPSI wave function with about `n_det_max`
    determinants. All cutoffs of the geometry use this one calculation.
@@ -228,8 +299,10 @@ both the RHF and the CIPSI calculation of the geometry.
 When the stage needs attention. A failed point does not stop the other points of the stage. The
 stage gets the status `NEEDS_ATTENTION` only when no point can make progress any more and at least
 one point failed, was stopped, or was refused by the engine. The message of the stage names every
-such point with its reason. A refusal by the batch system (for example a time-out of `sbatch`) is no
-failure: the request is made again on the next pass.
+such point with its reason. The engine refuses a run on disk that was made at another geometry or
+with another trial wave function than the stage asks for now. The stage does not use the energy of
+such a run, also when the run is `DONE`. A refusal by the batch system (for example a time-out of
+`sbatch`) is no failure: the request is made again on the next pass.
 
 A target whose search ended `NOT_CONVERGED`. The energies with several determinants are meant for a
 geometry that the search has fixed. So with the default `not_converged = stop` the stage does not
@@ -239,7 +312,12 @@ first, or set `not_converged = run`.
 Limits of this version:
 
 - The molecule must have charge 0 and multiplicity 1.
-- `n_det_max = auto` and `cutoff = auto` are not built yet.
+- `n_det_max = auto` is not built yet. `cutoff = auto` chooses the cutoffs from `auto_cutoffs`; it
+  does not choose `n_det_max`.
+- The coefficients of the determinants are not optimized with the Jastrow factor.
+- The automatic mode ran with real programs for two small molecules only: water and the ammonia
+  inversion, with the ladder 2.5e-4, 1e-4 (the default of that day), and for ammonia then with
+  2.5e-4, 1e-4, 5e-5 ([multireference.md](multireference.md), section 9).
 - A project with a section `[model]` cannot use `kind = multidet`.
 - The CIPSI wave function must hold at least 2 times as many determinants as the wave function
   after the cutoff. If it does not, the point fails, and the message says: raise `n_det_max`.
@@ -260,6 +338,19 @@ What you can change later:
   new CIPSI calculation and new DMC runs. When the plan of the stage changes (a cutoff removed,
   `series` lowered, `n_det_max` changed), every old point that has not ended is stopped, and the log
   names each one. A stopped point is not continued later. To compute it again, delete its folder.
+- With `cutoff = auto`: you can change `tolerance`, `series` and `series_max` at any time. The plan
+  that the stage reached (its cutoffs and its number of series) is kept, no run is stopped, and the
+  stage decides again with the new values. The same holds for `auto_cutoffs` when every cutoff that
+  the plan reached is still in the same place at the start of the new list (for example one more
+  cutoff at its end). If you change or remove a cutoff that the plan reached, or change `n_det_max`,
+  or switch between `auto` and a list, the stage starts from the input again: a run that is `DONE` is
+  not computed again, and a run that the first plan of the input does not hold and that has not ended
+  is stopped. Make such a change only while no DMC run of the stage is running or waiting (the message
+  of the stage then begins with `all N DMC run(s) are DONE`). A stopped run is not continued later.
+  When a later decision of the automatic mode adds a stopped run to its plan again, the stage needs
+  attention and names the run ([multireference.md](multireference.md), section 10, says what to do).
+- A project that version 0.1.0 computed can be opened with this version. The stage and the report
+  are written once more with the new tests that its cutoffs allow; no run is computed again.
 - Do not change `qp2_basis` or `qp2_pseudo` after the stage has started. The stage then stops with
   a message, because points with two different basis files cannot be compared.
 
@@ -368,7 +459,8 @@ A project with `[trial] kind = multidet` has two more places:
 
 ```
   work/trial/state.json      record of the stage trial: its rule, the names of its points, and the state and
-                             message of every point at the last pass
+                             message of every point at the last pass; with cutoff = auto also the plan now
+                             (cutoffs and DMC series), every decision with its numbers, and the final verdict
   work/qmc/trial/<target>/<start or final>/
       n<n_det_max>_c<cutoff>/        the DMC run of one cutoff (series 1), for example n10000_c1e-03
       n<n_det_max>_c<cutoff>_s2/     its second series
@@ -418,14 +510,47 @@ passed the VMC check. Else the cell reads `NOT COMPARABLE:` and the reason. The 
 is the square root of the sum of the squared errors of its rows. A value that uses the final
 geometry of a target whose search ended `NOT_CONVERGED` is marked `(search NOT_CONVERGED)`.
 
-Compare the differences of several cutoffs. If they agree within their error bars, the difference
-does not change with the size of the expansion in the range that you tested. One cutoff cannot
-show this.
+The file tests the size of the expansion for you, in up to three sections that follow the DMC
+energies ([multireference.md](multireference.md), section 10, has the rule):
+
+- "DMC energy against the single RHF determinant" (when the stage holds `hf` and a numeric cutoff).
+  One line for every target, geometry and numeric cutoff: the number of determinants, the DMC energy
+  of the cut minus that of the row `hf` at the same geometry in millihartree, and the result:
+  `above` (higher by more than 2 standard errors), `not above`, or `not available:` and the reason.
+  Then one line for every cutoff: `USABLE` (above at no geometry), `NOT USABLE` (above at one
+  geometry or more) or `no verdict yet` (a row of that cutoff, or a row `hf`, is not complete). A cut that is
+  above has worse nodes than one determinant at that geometry. This is the one table that subtracts
+  rows of two cutoffs. It uses the row `hf` of this stage (RHF orbitals of Quantum Package), not the
+  single-determinant energy of the search. A note marks every cut whose CIPSI wave function holds
+  fewer than 10 times its determinants: such a cut depends on `n_det_max`.
+- "Convergence with the size of the expansion" (with at least two numeric cutoffs). The two smallest
+  usable cutoffs are compared. One line for every tested difference (final minus start of every
+  target that the search moved; the barrier at the start geometries and at the final geometries):
+  its value at the coarse cutoff and at the fine cutoff, the change between them, the bound (the size
+  of the change plus 2 standard errors) and the verdict. Then the verdict of the project with its
+  reason: `CONVERGED`, `NOT_CONVERGED`, `NOT_DECIDED`, `NO_DIFFERENCE` or `NO_VERDICT`. With a list
+  of cutoffs this is a verdict only: the package adds no run by itself.
+- "Automatic choice of the cutoff" (only with `cutoff = auto`). The rule, the ladder, every decision
+  of the stage in order (what was measured, what was added and why), the final verdict, and the
+  result: the energy differences at the fine cutoff, each with its verdict and its bound.
+
+`CONVERGED` means that every tested difference changed by less than `tolerance` between the two
+largest usable expansions that were computed, with 2 standard errors of margin. It is a statement
+about these two cutoffs. It does not prove that a much larger expansion gives the same value. Total
+energies are not converged at the first two default cutoffs: the test is about energy differences only. One
+numeric cutoff cannot show convergence.
 
 The file `trial_wavefunctions.csv` holds the same numbers. Its first column, `row`, says what a line
 is: `energy` (one geometry and one cutoff), `final minus start`, `barrier` (the column `geometry` says
-`start` or `final`), or `barrier change`. The column `uses_not_converged_geometry` is `yes` for a
-difference that uses the final geometry of a target whose search ended `NOT_CONVERGED`.
+`start` or `final`), `barrier change`, `against hf` (one cut at one geometry against the row `hf`)
+or `convergence` (one tested difference at the two cutoffs of the pair). The column
+`uses_not_converged_geometry` is `yes` for a difference that uses the final geometry of a target
+whose search ended `NOT_CONVERGED`. The columns of the lines `against hf` and `convergence` stand at
+the end of every line, after the columns of version 0.1.0: `dmc_minus_hf_millihartree` and its error,
+`against_hf`, `cutoff_usable`, `coarse_cutoff`, `fine_cutoff`, the difference at the coarse and at
+the fine cutoff with their errors, `change_fine_minus_coarse_kcal_per_mol` and its error,
+`bound_kcal_per_mol`, `tolerance_kcal_per_mol`, `verdict`, `project_verdict` with its reason, and
+`automatic_final_verdict`.
 
 How the geometry along a path is shown. A small molecule has a few bonds and angles, and each one
 can be a line. A large molecule has too many. The report therefore shows the same information at

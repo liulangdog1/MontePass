@@ -10,9 +10,21 @@ message, and the limits of this version.
 The geometry search always uses one Slater determinant with Kohn-Sham orbitals from PySCF. The option
 does not change the search. It adds one stage, `trial`, between the stages `search` and `report`. The
 stage starts when the search of every target has ended. For every target it takes two geometries:
-the start geometry and the final geometry of the search. For every geometry and every cutoff of the
-input it runs `series` independent DMC runs with a multi-determinant trial wave function. The stage is
-experimental: section 9 gives the measured energies and the limits.
+the start geometry and the final geometry of the search. For every geometry and every cutoff it runs
+independent DMC runs with a multi-determinant trial wave function. The stage is experimental:
+section 9 gives the measured energies and the limits.
+
+The cutoffs come from one of two modes:
+
+- `cutoff = auto` (the automatic mode, section 10): the package chooses the cutoffs from a ladder. It
+  tests each cut against the single RHF determinant, tests whether every tested energy difference
+  (section 10, step 3) is converged with the size of the expansion, adds DMC series or the next cutoff
+  when the test cannot decide or finds a change above the tolerance, and reports a verdict.
+- `cutoff = <list>` (the manual mode): you choose the cutoffs and the number of DMC series. The
+  report makes the same two tests and gives a verdict, but the package adds no run by itself.
+
+Why the automatic mode exists: a short expansion can give a DMC energy ABOVE that of one determinant.
+For water and ammonia this was measured for the cutoffs 1e-3 and 5e-4 (section 9).
 
 The trial wave function of one cutoff is made in this order:
 
@@ -27,9 +39,23 @@ The cutoff `hf` is the single RHF determinant of QP2. It needs no CIPSI calculat
 
 What the report prints: the DMC energy of every geometry and cutoff, the energy change of every
 target (final geometry minus start geometry), and every barrier (saddle minus minimum) at the start
-geometries, at the final geometries, and its change. Every difference uses rows of one cutoff only.
-The report never subtracts a single-determinant energy from a multi-determinant energy: the two trial
-wave functions have different nodes, so their fixed-node errors differ.
+geometries, at the final geometries, and its change. Every such difference uses rows of one cutoff
+only. The report never subtracts the single-determinant energy of the search from a multi-determinant
+energy: the two trial wave functions have different nodes, so their fixed-node errors differ.
+
+The report also prints two tests of the size of the expansion, in both modes (section 10 has the
+rule):
+
+- "DMC energy against the single RHF determinant": the DMC energy of every cut minus that of the row
+  `hf` of this stage at the same geometry. Both rows use the RHF orbitals of QP2 and the same chain of
+  programs. So the lower energy has the better nodes, if the time-step errors of the two rows are
+  equal; section 9 says that this was not tested. A cut whose energy is higher by more than 2
+  standard errors is "above", and its cutoff is NOT USABLE.
+- "Convergence with the size of the expansion": every tested energy difference (section 10, step 3)
+  at the two smallest usable cutoffs, its change between them, and a verdict.
+
+In the automatic mode a third section, "Automatic choice of the cutoff", lists every decision of the
+stage, the final verdict and the result.
 
 ## 2. How to switch it on
 
@@ -38,21 +64,49 @@ wave functions have different nodes, so their fixed-node errors differ.
 | Key | Default | Meaning |
 |---|---|---|
 | `kind` | `single` | `single`: nothing more is computed, and the other keys are not read. `multidet`: the stage `trial` is added. |
-| `n_det_max` | empty | size of the CIPSI wave function of each geometry: a whole number, at least 2. Needed unless every cutoff is `hf`. |
-| `cutoff` | empty | one value, or several values separated by commas, for example `1e-3, 1e-4, hf`. A number must be between 0 and 1. A smaller number keeps more determinants. Two cutoffs that agree in their first 6 significant digits count as the same cutoff, and the input file is refused. |
-| `series` | 2 | independent DMC runs for each geometry and each cutoff (at least 1). |
+| `cutoff` | empty | needed for `multidet`. Either the word `auto` (the automatic mode; the word must stand alone), or a list: one value, or several values separated by commas, for example `2.5e-4, 1e-4, hf`. A number must be between 0 and 1. A smaller number keeps more determinants. The word `hf` is the single RHF determinant of QP2. Two cutoffs that agree in their first 6 significant digits count as the same cutoff, and the input file is refused. |
+| `n_det_max` | empty | size of the CIPSI wave function of each geometry: a whole number, at least 2. With a list of cutoffs it is needed, unless every cutoff is `hf`. With `cutoff = auto` an empty value means 100000. `n_det_max = auto` is not built. |
+| `auto_cutoffs` | `2.5e-4, 1e-4, 5e-5` | only with `cutoff = auto`: the ladder, which holds the cutoffs that the package may use, in the order of their use. At least 2 numbers between 0 and 1, each smaller than the one before it; no `hf` (the automatic mode always computes `hf`). |
+| `tolerance` | 1.0 | kcal/mol, larger than 0. An energy difference counts as converged between two cutoffs when the size of its change plus 2 standard errors is at most this value. Used by the convergence test of the report in both modes, and by the automatic mode. |
+| `series` | 2 | independent DMC runs for each geometry and each cutoff (at least 1). With `cutoff = auto`: the number at the start. |
+| `series_max` | 4 | only with `cutoff = auto`: the largest number of DMC runs for each geometry and each cutoff. At least `series`. |
 | `qp2_basis`, `qp2_pseudo` | `auto` | names of the basis file and of the pseudopotential file of QP2. `auto` takes them from `[qmc] basis` and `ecp`: `ccecpccpvdz`, `ccecpccpvtz`, `ccecpccpvqz`, `ccecpccpv5z` give `cc-pvdz_ecp_ccecp` to `cc-pv5z_ecp_ccecp`; `ccecp` gives `ccecp`. |
 | `not_converged` | `stop` | a target whose search ended `NOT_CONVERGED`: `stop` = the stage does not start and the project needs attention; `run` = the stage runs, and the tables mark every value that uses the final geometry of that target. |
 
-Example:
+The automatic mode with its defaults (the input of `examples/water_multidet`):
+
+```
+[trial]
+kind = multidet
+cutoff = auto
+```
+
+The same with every key written out:
+
+```
+[trial]
+kind = multidet
+cutoff = auto
+n_det_max = 100000
+auto_cutoffs = 2.5e-4, 1e-4, 5e-5
+tolerance = 1.0
+series = 2
+series_max = 4
+```
+
+The manual mode:
 
 ```
 [trial]
 kind = multidet
 n_det_max = 100000
-cutoff = 1e-3, 5e-4, hf
+cutoff = 2.5e-4, 1e-4, hf
 series = 2
 ```
+
+In the manual mode the keys `auto_cutoffs` and `series_max` are not read. A manual list should hold
+`hf` and at least two numeric cutoffs: then the report can make both tests. Section 9 says why the
+cutoffs 1e-3 and 5e-4 are a bad choice for water and ammonia.
 
 ### Machine profile
 
@@ -67,6 +121,10 @@ series = 2
 
 `montepass check <folder>` lists every key that the profile lacks for QP2 as a `PROBLEM:` line, and
 then prints the plan of the stage: the number of geometries, QP2 calculations, cutoffs and DMC runs.
+In the automatic mode the plan names the ladder, the tolerance and the two numbers of series, and it
+gives the number of DMC runs at the start and at most. The profile must allow `series_max` DMC runs of
+one geometry (in the manual mode: `series`): at most 1024 / (2 x `[job.qmc] tasks`), which is 16 with
+32 MPI ranks.
 `montepass submit` refuses to submit the driver job while such a problem exists. The commands `run`,
 `report` and `retry` print the problem and end with exit code 1.
 
@@ -187,7 +245,11 @@ record of the point, and the report shows them.
   every pass; after 1 hour of refusals it counts as a failure of the point.
 - When a value of `[trial]` changes, the points of the new plan are asked for first. Then the points of
   the old plan that are not in the new plan are stopped. So a QP2 job that a point of the new plan
-  needs (the CIPSI job of a geometry, for example) is kept.
+  needs (the CIPSI job of a geometry, for example) is kept. A stopped point is not continued later:
+  delete its folder to compute it again.
+- The automatic mode writes each decision and the plan that follows from it to its record in one step.
+  A driver job that is started again continues from that record: the same plan, and no decision is
+  made twice. Section 10 says which changes of the input keep the plan that was reached.
 
 ## 6. Threads and cores
 
@@ -243,15 +305,19 @@ and CIPSI again.
 | `step mdvmc: ... no pass` after the last run | the difference stayed between the two limits in all allowed runs: it is small but not zero | look at `check_mdvmc.json` of the point (combined difference and error bar). `retry` gives the same verdict, because the finished runs are kept |
 | `determinant check: the QMCPACK output of the DMC run does not say` | a DMC run did not read all determinants | check the QMCPACK input of the point |
 | `jastrow check: ... the Jastrow factor does not lower the energy` | the optimized VMC energy is not below the energy of the determinants without Jastrow factor. For a multi-determinant point this energy is `e_ref`, the energy that QP2 printed | look at the optimization outputs `opt.s*.scalar.dat` of the point |
-| `point ... exists with another trial wave function` | a key was asked for again with another wave function | use a new key; the stage gives every cutoff and `n_det_max` its own key |
+| `point ... exists with another trial wave function` | a run of the stage on disk was made with another trial wave function than the one that the stage asks for now. The message gives the stored values and the asked values (cutoff, `n_det_max`, basis file, pseudopotential file). The stage does not use the energy of such a run, also when the run is `DONE`, and it needs attention | set the key of `[trial]` that differs back to the stored value. To keep the new value, compute the stage again from its first job (next row) |
+| `point ... exists with another geometry` or `the QP2 folder ... holds another geometry` | a run of the stage on disk, or the QP2 calculations of a geometry, were made at another geometry than the one that the stage asks for now. The start geometry or the final geometry of a target changed after they were made, for example because the search of that target ran again. The stage does not use the energy of such a run, also when the run is `DONE`, and it needs attention. A report that you write with `montepass report` in this state still prints the energy of such a run; its first lines then say that the stage needed attention | compute the stage again from its first job: wait until no driver job of the project runs and no job of the stage runs or waits in the queue, delete the record of the stage (`work/trial/`) and the points of the stage (the folder `trial` below `work/qmc/`), then run `montepass submit`. All QP2 calculations and all DMC runs of the stage are computed again |
 | `the search of target(s) ... ended NOT_CONVERGED, so the stage does not start` | the rule `[trial] not_converged = stop` | set `not_converged = run` to compute the stage at that geometry |
-| `... asks for [trial] kind = multidet, but the machine profile ... cannot run that stage` | the profile lacks a QP2 section or key, `[job.qp2] time` is 15 minutes or less, or `[trial] series` is larger than 1024 / (2 x `[job.qmc] tasks`) | repair what the `PROBLEM:` lines name |
+| `... asks for [trial] kind = multidet, but the machine profile ... cannot run that stage` | the profile lacks a QP2 section or key, `[job.qp2] time` is 15 minutes or less, or `[trial] series` (with `cutoff = auto`: `[trial] series_max`) is larger than 1024 / (2 x `[job.qmc] tasks`) | repair what the `PROBLEM:` lines name |
+| `automatic cutoff: NOT_CONVERGED`, `NOT_DECIDED`, `NO_DIFFERENCE` or `NO_VERDICT` at the end of the message of the stage | the verdict of the automatic mode. The stage is `DONE`: a verdict is a result, not a failure | read section 10 and the section "Automatic choice of the cutoff" of `results/trial_wavefunctions.md`. What to do depends on the verdict. `NOT_CONVERGED`: to continue, add a smaller cutoff at the end of `auto_cutoffs`. `NOT_DECIDED`: the end of the message says what can help. "to continue, raise [trial] series_max above N": the errors are too large for the verdict `CONVERGED` also with a smaller cutoff, so raise `series_max` above N, the number of series of the plan; a smaller cutoff does not help then. "to continue, add a smaller cutoff at the end of [trial] auto_cutoffs": the errors are small enough, so add a smaller cutoff. `NO_DIFFERENCE`: nothing to do; the project prints no energy difference, so the ladder and `series_max` change nothing. `NO_VERDICT`: read the reason in the message; it names every row that is not complete, or every difference that cannot be compared |
 | `refused for N minutes` | the batch system refused the request of a point for more than 1 hour (for example a time limit above the limit of the partition) | read the refusal in the message; repair the profile, then `retry` |
 
 ## 8. Files
 
 ```
-work/trial/state.json                   record of the stage: rule, plan, state of every point at the last pass
+work/trial/state.json                   record of the stage: rule, plan, state of every point at the last pass;
+                                        with cutoff = auto also the entry "auto": the plan now (cutoffs, series),
+                                        every decision with its numbers, and the final verdict
 work/qmc/trial/<target>/<start|final>/
     n<n_det_max>_c<cutoff>/             DMC run of one cutoff (series 1); ..._s2/ its second series
     hf/                                 DMC run with the RHF determinant of QP2
@@ -270,25 +336,392 @@ In the folder of a series-1 point: `trial_facts.json` (the facts of the cut), `t
 Result files: `results/trial_wavefunctions.md` and `results/trial_wavefunctions.csv` (user guide,
 section 6).
 
-## 9. Limits of this version
+## 9. Limits of this version, and what was measured
+
+The stage is experimental. This section gives the limits, the measured energies behind the rule of
+section 10, the results of the automatic mode for two molecules, and what is still not known.
+
+### Limits
 
 - The molecule must have charge 0 and multiplicity 1 (closed shell). One electronic state.
-- The user chooses `n_det_max` and the cutoffs. `n_det_max = auto` and `cutoff = auto` are not built.
-- The coefficients of the determinants are not optimized with the Jastrow factor.
-- Measured (examples/water_multidet, version 0.1.0): at the start and at the final geometry of water, the trial wave
-  function cut at 1e-3 gave DMC energies ABOVE those of the single RHF determinant of QP2 (same orbitals, same
-  Jastrow form): 1.53 +/- 0.31 and 1.93 +/- 0.28 millihartree in the run of 2026-11-25 (50 and 42 determinants), and
-  2.09 +/- 0.38 and 2.21 +/- 0.42 millihartree in the run of 2026-11-26 (55 and 42 determinants). The engine tests
-  (development code; started on 2026-11-24; 120 blocks of 100 steps, time step 0.005 Ha^-1) gave, against the
-  single RHF determinant: with the cutoff 1e-3, water +2.6 +/- 0.8 (55 determinants), ammonia +1.4 +/- 0.9 (178) and
-  HCN -4.9 +/- 1.1 (186) millihartree; with the cutoff 1e-4, water -2.9 +/- 0.8 (2,092), ammonia -3.1 +/- 1.0
-  (3,602) and HCN -12.7 +/- 1.2 (4,888) millihartree. So only the short expansions of the cutoff 1e-3 of water and
-  ammonia gave higher energies (ammonia by 1.5 standard errors). The cause was not investigated, so treat the
-  energies of this stage as experimental.
+- `n_det_max = auto` is not built. `cutoff = auto` chooses the cutoffs from the ladder of the input
+  (section 10); it does not choose `n_det_max`.
+- The coefficients of the determinants are not optimized with the Jastrow factor. They stay as QP2
+  computed them, without a Jastrow factor. The next two parts show what this costs.
 - The orbitals are the RHF orbitals of QP2; natural orbitals are not used.
 - The search never uses these wave functions. The energies are computed after the geometry is fixed.
 - A wave function that exists already can be used only through the engine setting `import_ezfio` (a
   test feature), not through the input file.
 - The automatic choice of `qp2_basis` knows only the ccECP cc-pVnZ basis sets.
-- The cost of the QP2 jobs and of the DMC runs depends on the molecule and on `n_det_max`. This
-  version has no table of measured costs; measure the cost of one geometry before a large run.
+- The cost of the QP2 jobs and of the DMC runs depends on the molecule and on `n_det_max`. Section 10
+  gives the measured cost of two cutoff ladders of small molecules; there the QP2 jobs are a small
+  part of the cost. For a larger molecule measure the cost of one geometry before a large run.
+
+### Measured: short expansions give DMC energies above one determinant
+
+Runs of 2026-11-27 with the engine of version 0.1.0, started by scripts and not by the stage. Water
+and ammonia, one geometry each. One CIPSI wave function per molecule with `n_det_max = 100000`
+(106,988 determinants for water, 199,135 for ammonia), cut at four cutoffs. DMC with 2048 walkers, 200
+blocks of 400 steps and the time step 0.005 Ha^-1; one DMC series for each cut and two for `hf`.
+
+DMC energy of the cut minus the DMC energy of the single RHF determinant (`hf`, same orbitals), in
+millihartree, with the number of determinants in brackets:
+
+| cutoff | water | ammonia |
+|---|---|---|
+| 1e-3 | +2.14 +/- 0.38 (73) | +3.15 +/- 0.40 (196) |
+| 5e-4 | +2.45 +/- 0.37 (439) | +2.49 +/- 0.39 (508) |
+| 2.5e-4 | -0.95 +/- 0.39 (1,006) | -0.78 +/- 0.36 (1,610) |
+| 1e-4 | -4.05 +/- 0.34 (2,362) | -2.02 +/- 0.36 (4,105) |
+
+What the table shows:
+
+- For both molecules the cuts at 1e-3 and 5e-4 give DMC energies above the single determinant, by 5.6
+  to 7.9 standard errors. These short expansions are worse than one determinant.
+- The cuts at 2.5e-4 and 1e-4 give energies below the single determinant.
+- The energy does not fall steadily with the number of determinants.
+- Total energies are not converged at these cutoffs: between the cutoffs 2.5e-4 and 1e-4 the DMC
+  energy fell by 3.10 +/- 0.41 millihartree for water and by 1.24 +/- 0.38 millihartree for ammonia
+  (differences of the DMC energies of these runs).
+
+### Measured for water and ammonia: the cause is the coefficients
+
+The coefficients of the determinants come from QP2, which computes them without a Jastrow factor. The
+package optimizes only the Jastrow factor. A test by hand outside the package (2026-11-27) took the
+same cut wave functions and optimized their coefficients together with the Jastrow factor in QMCPACK
+(linear method, starting from the Jastrow factor of the run with fixed coefficients). Then DMC ran
+with the settings of the table above and another seed. DMC energy minus that of `hf`, in
+millihartree:
+
+| molecule | cutoff | determinants | coefficients of QP2 (what the package does) | optimized: 8 cycles of 100,000 samples | optimized: 6 more cycles of 400,000 samples |
+|---|---|---|---|---|---|
+| water | 1e-3 | 73 | +2.14 +/- 0.38 | +0.31 +/- 0.33 | -0.20 +/- 0.34 |
+| ammonia | 1e-3 | 196 | +3.15 +/- 0.40 | +1.52 +/- 0.38 | -0.02 +/- 0.31 |
+| water | 5e-4 | 439 | +2.45 +/- 0.37 | -1.39 +/- 0.35 | not run |
+| ammonia | 5e-4 | 508 | +2.49 +/- 0.39 | -0.77 +/- 0.35 | not run |
+
+What the table shows:
+
+- In all 4 cases the first optimization of the coefficients lowered the DMC energy: by 1.63 +/- 0.44
+  millihartree (ammonia, 1e-3) to 3.84 +/- 0.41 millihartree (water, 5e-4), which is 3.7 to 9.3
+  standard errors.
+- With the longer optimization both cuts at 1e-3 give the energy of the single determinant within
+  their errors (-0.20 +/- 0.34 and -0.02 +/- 0.31 millihartree). So, within these errors, the
+  coefficients of QP2 explain the whole excess of the cuts at 1e-3 for water and ammonia.
+- A coefficient optimization needs enough samples. 8 cycles of 100,000 samples were not enough for
+  the 196 determinants of ammonia; 6 more cycles of 400,000 samples were.
+- Limits of this test: one optimization for each case, and one DMC series for each case.
+
+The package does not optimize the coefficients, and this version does not change that. Instead the
+automatic mode starts at the cutoffs 2.5e-4 and 1e-4, tests every cut against the single determinant,
+and tests the energy differences for convergence (section 10).
+
+One paper reports the same effect: E. Giner, R. Assaraf, J. Toulouse, Mol. Phys. 114, 910 (2016),
+DOI 10.1080/00268976.2016.1149630.
+
+### Measured: a cut without spin error is also above one determinant
+
+QP2 makes the cut by spin strings: it removes every determinant whose alpha part or beta part has a
+summed weight below the cutoff (program `truncate_wf_spin`, section 1). Such a cut is not an exact
+singlet: for the 8 cuts of the first table the expectation value of the squared total spin, S^2, is
+between 0.0150 and 0.0303 (an exact singlet has 0). A second test by hand (2026-11-27) checked whether
+this spin error causes the higher energies. It used cuts that are exact singlets by construction: the
+QP2 program `truncate_wf` with `s2_eig = true` keeps or removes all determinants of one configuration
+(one occupation pattern of the orbitals) together. These cuts were made from the same two CIPSI wave
+functions and were read through the engine setting `import_ezfio`. DMC ran with the settings of the
+first table, one series for each cut. DMC energy minus that of `hf` (the two `hf` runs of the first
+table), in millihartree:
+
+| molecule | threshold of `truncate_wf` | determinants of the exact-singlet cut | DMC minus `hf` |
+|---|---|---|---|
+| water | 3e-4 | 134 | +4.65 +/- 0.33 |
+| water | 1e-4 | 620 | +4.77 +/- 0.32 |
+| water | 2e-5 | 1,907 | +1.21 +/- 0.32 |
+| ammonia | 3e-4 | 155 | +4.46 +/- 0.36 |
+| ammonia | 1e-4 | 576 | +4.08 +/- 0.36 |
+
+What the table shows:
+
+- Every exact-singlet cut that was computed is above the single determinant, by 3.7 to 15.1 standard
+  errors, also the cut of water with 1,907 determinants. The cuts by spin strings with 1,006 or more
+  determinants (water) and with 1,610 or more determinants (ammonia) are below the single determinant
+  (first table).
+- A new diagonalization of the Hamiltonian in the space of the smallest cut did not lower the DMC
+  energy: +4.82 +/- 0.36 millihartree for water (134 determinants) and +5.56 +/- 0.38 millihartree
+  for ammonia (155).
+- So a cut without spin error does not remove the higher energies. The spin error of the cut by spin
+  strings is not needed to explain them, and the stage keeps this cut. The test does not measure
+  which part of the excess of a cut by spin strings comes from its spin error, because the two kinds
+  of cut hold different determinants.
+- Limits of this test: one DMC series for each cut. The exact-singlet cut of ammonia with the
+  threshold 2e-5 (2,381 determinants) gave no DMC energy: the check of the number of determinants
+  (section 4) stopped the point, because QMCPACK did not read all 2,381 determinants (2 of them have
+  the coefficient 0).
+
+### Measured: the automatic mode on water and on the ammonia inversion
+
+Runs of 2026-11-27 with the code of version 0.2.0, from the xyz files to the report, with real
+programs on a cluster. Inputs: `examples/water_multidet` as it is, and `examples/ammonia_inversion`
+with the lines `[trial]`, `kind = multidet` and `cutoff = auto` added. All other values of `[trial]`
+were the defaults of that day: `n_det_max = 100000`, the ladder 2.5e-4 and 1e-4, the tolerance 1.0
+kcal/mol, 2 DMC series at the start and at most 4. (Because of these runs the default ladder is now
+2.5e-4, 1e-4, 5e-5; see the end of this part.) The DMC settings came from the pilot runs of each project:
+the time step 0.005 Ha^-1 with 155 blocks of 500 steps for water, the time step 0.02 Ha^-1 with 157
+blocks of 125 steps for ammonia, 2048 walkers for both.
+
+What the stage did:
+
+- Water: 1 decision after the first 12 DMC runs, `CONVERGED` within 1.0 kcal/mol between the cutoffs
+  2.5e-4 and 1e-4.
+- Ammonia, ladder 2.5e-4, 1e-4: 3 decisions, `NOT_DECIDED` with 2, with 3 and with 4 series. The stage
+  ended with `NOT_DECIDED` after 48 DMC runs, because `series_max = 4` allowed no further series and
+  the ladder held no further cutoff.
+- Ammonia, continued: we wrote `auto_cutoffs = 2.5e-4, 1e-4, 5e-5` into the input and submitted the
+  project again. The stage kept its 48 runs, decided again, added the cutoff 5e-5 with 4 series (16
+  DMC runs), and ended `CONVERGED` within 1.0 kcal/mol between the cutoffs 1e-4 and 5e-5.
+
+DMC energy of each cut minus that of `hf` at the same geometry, in millihartree, with the number of
+determinants in brackets (water: 2 series; ammonia: 4 series):
+
+| geometry | determinants of the CIPSI wave function | 2.5e-4 | 1e-4 | 5e-5 |
+|---|---|---|---|---|
+| water, start | 103,253 | -0.60 +/- 0.30 (1,006) | -3.74 +/- 0.29 (2,356) | not run |
+| water, final | 191,086 | -0.65 +/- 0.29 (1,048) | -3.35 +/- 0.30 (2,434) | not run |
+| ammonia reactant, start | 100,908 | -0.62 +/- 0.19 (2,588) | -3.06 +/- 0.19 (7,094) | -3.38 +/- 0.18 (12,506) |
+| ammonia reactant, final | 196,204 | -1.02 +/- 0.20 (1,590) | -2.29 +/- 0.20 (3,992) | -2.74 +/- 0.20 (9,406) |
+| ammonia saddle, start | 194,116 | -0.48 +/- 0.24 (1,381) | -1.53 +/- 0.23 (3,525) | -1.75 +/- 0.22 (6,942) |
+| ammonia saddle, final | 184,399 | +0.25 +/- 0.20 (1,137) | -0.97 +/- 0.19 (3,016) | -1.24 +/- 0.19 (6,198) |
+
+The energy differences that the rule tests, in kcal/mol ("start" and "final" are the geometries
+before and after the search):
+
+| difference | `hf` | 2.5e-4 | 1e-4 | 5e-5 | change from 2.5e-4 to 1e-4 | change from 1e-4 to 5e-5 |
+|---|---|---|---|---|---|---|
+| water, final minus start | -0.22 +/- 0.19 | -0.26 +/- 0.17 | +0.02 +/- 0.17 | not run | +0.28 +/- 0.24 | not run |
+| ammonia reactant, final minus start | -0.03 +/- 0.12 | -0.28 +/- 0.12 | +0.45 +/- 0.12 | +0.37 +/- 0.11 | +0.73 +/- 0.17 | -0.08 +/- 0.16 |
+| ammonia saddle, final minus start | -0.31 +/- 0.14 | +0.15 +/- 0.14 | +0.04 +/- 0.13 | +0.01 +/- 0.12 | -0.11 +/- 0.19 | -0.03 +/- 0.17 |
+| ammonia barrier at the start geometries | 4.89 +/- 0.14 | 4.98 +/- 0.13 | 5.85 +/- 0.12 | 5.92 +/- 0.11 | +0.87 +/- 0.18 | +0.06 +/- 0.17 |
+| ammonia barrier at the final geometries | 4.62 +/- 0.12 | 5.41 +/- 0.13 | 5.45 +/- 0.12 | 5.56 +/- 0.12 | +0.03 +/- 0.18 | +0.11 +/- 0.17 |
+
+What the runs show:
+
+- No cut was above the single determinant: 16 comparisons at 6 geometries, the largest value +0.25
+  +/- 0.20 millihartree. The cuts of ammonia were computed at the time step 0.02 Ha^-1, the cuts of
+  the first table of this section at 0.005 Ha^-1.
+- For ammonia two differences depend on the cutoff between 2.5e-4 and 1e-4, by 0.73 +/- 0.17 and
+  0.87 +/- 0.18 kcal/mol. Between 1e-4 and 5e-5 all four differences change by 0.11 kcal/mol or
+  less, with errors of 0.16 to 0.17 kcal/mol. So a ladder of two cutoffs was not enough for ammonia,
+  and one more cutoff was. For this reason the default ladder is now 2.5e-4, 1e-4, 5e-5. With the
+  recorded numbers and this ladder, the rule of this version adds the cutoff 5e-5 by itself after
+  the fourth series of ammonia (decision 6 of section 10), with no change of the input.
+- The same cutoff can keep different numbers of determinants at two geometries 0.0049 angstrom apart
+  (root mean square displacement after rigid alignment; largest displacement of one atom 0.0057
+  angstrom): 2,588 and 1,590 determinants for the start and the final geometry of the ammonia
+  reactant at the cutoff 2.5e-4. The size of the CIPSI wave function is not the reason: for water,
+  wave functions of 103,253 and 191,086 determinants give cuts of 1,006 and 1,048 determinants. The
+  reason was not investigated.
+- Cost of the stage, in the core-hours that the engine counted (QP2 jobs included): 136.0 for water
+  (12 DMC runs); 192.7 for the rows of the first two cutoffs and of `hf` of ammonia (48 DMC runs)
+  and 115.1 for its third cutoff (16 DMC runs).
+- Limits of these runs: two small molecules, and one run of each project. The runs used the code of
+  version 0.2.0 before its last corrections of 2026-11-27. With the recorded numbers, the rule of the
+  final code of version 0.2.0 makes the same 6 decisions (1 for water, 5 for ammonia).
+
+### What is still not known
+
+- No test of the time step was made at a fixed geometry. The cutoff ladders of the first table used
+  the time step 0.005 Ha^-1, and the automatic run of ammonia used 0.02 Ha^-1 at other geometries.
+  So a time-step error that differs between the trial wave functions is not excluded.
+- The rule of section 10 and the automatic mode were tested with real programs for two small
+  molecules only: water and the ammonia inversion (the part above). They were not tested on a larger
+  molecule.
+- Why the same cutoff keeps different numbers of determinants at two geometries 0.0049 angstrom
+  apart (the part above) was not investigated. A choice of the cut that gives wave functions of
+  the same quality at every geometry is not built.
+
+### Earlier runs (version 0.1.0 and development code)
+
+- Example `examples/water_multidet`, runs of version 0.1.0 with the input of that version
+  (`n_det_max = 10000` and `cutoff = 1e-3, hf`): at the start and at the final geometry of water,
+  the trial wave function cut at 1e-3 gave DMC energies above those of the single RHF determinant of
+  QP2 (same orbitals, same Jastrow form): 1.53 +/- 0.31 and 1.93 +/- 0.28 millihartree in the run of
+  2026-11-25 (50 and 42 determinants), and 2.09 +/- 0.38 and 2.21 +/- 0.42 millihartree in the run of
+  2026-11-26 (55 and 42 determinants).
+- Engine tests (development code; started on 2026-11-24; 120 blocks of 100 steps, time step 0.005
+  Ha^-1), against the single RHF determinant: with the cutoff 1e-3, water +2.6 +/- 0.8 (55
+  determinants), ammonia +1.4 +/- 0.9 (178) and HCN -4.9 +/- 1.1 (186) millihartree; with the cutoff
+  1e-4, water -2.9 +/- 0.8 (2,092), ammonia -3.1 +/- 1.0 (3,602) and HCN -12.7 +/- 1.2 (4,888)
+  millihartree.
+
+In these runs the expansions of the cutoff 1e-3 of water and ammonia gave higher energies than the
+single determinant (ammonia in the engine test by 1.5 standard errors). HCN with the cutoff 1e-3, and
+all three molecules with the cutoff 1e-4, gave lower energies. For water and ammonia the newer
+measurements of this section show the same.
+
+## 10. The automatic choice of the cutoff (`cutoff = auto`)
+
+### The rule
+
+The rule has five steps. The report applies steps 1 to 4 in both modes. The constants are fixed in
+the code (`src/montepass/trial_rule.py`); `tolerance` comes from the input.
+
+1. **Each cut against the single determinant.** For every numeric cutoff and every geometry:
+   `delta = E(cut) - E(hf)`, with the error `sqrt(error(cut)^2 + error(hf)^2)`. Both energies are DMC
+   energies of this stage at the same geometry. The cut is "above" at that geometry if `delta` is
+   larger than 2 standard errors. A cutoff is USABLE if it is above at no geometry. A row that is not
+   complete (a DMC series that is not `DONE`, no energy, or a VMC check without Jastrow factor that
+   did not pass or was not made) gives "not available" with the reason.
+2. **The pair.** Of the usable cutoffs, the two with the smallest values are compared. "coarse" is
+   the larger value (fewer determinants), "fine" the smaller one. A manual list without `hf` tests no
+   cut; then every numeric cutoff counts as "not tested", and the two smallest cutoffs are compared.
+3. **Every tested difference.** The tested differences are: (a) final minus start of every target
+   whose search moved the geometry, (b) the barrier at the start geometries and (c) the barrier at
+   the final geometries of every pair of a saddle target and a minimum target. For each difference
+   `D`: `S = D(fine) - D(coarse)`, `e = sqrt(error(D fine)^2 + error(D coarse)^2)`, and
+   `bound = |S| + 2 e`. The difference is `CONVERGED` if `bound <= tolerance`, `NOT_CONVERGED` if
+   `|S| - 2 e > tolerance`, and `NOT_DECIDED` otherwise. The change of a barrier (final minus start)
+   is not tested: it is the difference of (b) and (c).
+4. **The verdict of the project.** `NOT_CONVERGED` if one tested difference is `NOT_CONVERGED`, or if
+   fewer than two cutoffs are usable; else `NOT_DECIDED` if one is `NOT_DECIDED`; else `CONVERGED`.
+5. **The result.** The energy differences of the project are those at the fine cutoff of the pair.
+   The report prints them with the verdict and with the bound.
+
+What the verdicts mean:
+
+| Verdict | Meaning |
+|---|---|
+| `CONVERGED` | every tested difference changed by less than the tolerance between the two largest usable expansions that were computed, with 2 standard errors of margin. It is a statement about these two cutoffs. It does not prove that a much larger expansion gives the same value. |
+| `NOT_CONVERGED` | at least one difference changed by more than the tolerance, with 2 standard errors of margin; or fewer than two cutoffs are usable. The reason names every such difference, or every cut that is above the single determinant with its geometry and `delta +/- error`. |
+| `NOT_DECIDED` | the error bars are too large to say either. |
+| `NO_DIFFERENCE` | the project prints no energy difference (for example one target that the search did not move), so nothing can be tested. |
+| `NO_VERDICT` | a row is not complete (a DMC run is not `DONE`, the row has no DMC energy, or the VMC check without Jastrow factor did not pass or was not made), or a difference cannot be compared. No test is possible. The report can give this verdict before the stage has ended, because a DMC run that is not `DONE` makes its row not complete. |
+
+Total energies are not converged with the size of the expansion at the first two cutoffs of the default ladder
+(section 9: 3.10 +/- 0.41 and 1.24 +/- 0.38 millihartree between 2.5e-4 and 1e-4). The verdict is
+about energy differences only. Every report of a stage with a numeric cutoff says so.
+
+### What the stage does
+
+The stage starts with the first two cutoffs of `auto_cutoffs` and with `hf`, with `series` DMC runs
+for each geometry and each cutoff. When every DMC run of its plan is `DONE`, it applies the rule and
+makes one decision. The decisions, in this order:
+
+1. `NO_DIFFERENCE` (the project prints no energy difference): the stage ends with this verdict.
+2. `NO_VERDICT` (a row is not complete although its runs are `DONE`): the stage ends with this
+   verdict.
+3. `CONVERGED`: the stage ends with this verdict. It ends also when a smaller cutoff of the plan is
+   above by at most 3 standard errors: the two usable cutoffs with the smallest values are converged.
+4. A cutoff is "above" at one geometry or more (step 1: by more than 2 standard errors) and at none
+   of them by more than 3 standard errors, and the number of series is below `series_max`: every row
+   gets one more DMC series. The result is then tested again with more data. The stage makes this
+   decision only when more data can change the two cutoffs that are compared. So three conditions
+   must hold. First, the cutoff is above by more than 3 standard errors at no geometry: the stage
+   takes such a result as final and does not test it again, so the cutoff stays not usable, whatever
+   the results at the other geometries are. Second, fewer than two usable cutoffs have a smaller
+   value: the pair is the two usable cutoffs with the smallest values, so a cutoff that has two
+   usable cutoffs with smaller values would not be in the pair even if it were usable. Third, the
+   usable cutoffs and the cutoffs that meet the first two conditions are at least two together: with
+   fewer, no pair exists even if no such result is above after more data. If these conditions do
+   not hold, decision 5 or 6 follows.
+5. `NOT_CONVERGED` (a difference, or fewer than two usable cutoffs): the next cutoff of the ladder is
+   added to the plan, with the number of series that the other rows have. If the ladder holds no
+   further cutoff, the stage ends with `NOT_CONVERGED`.
+6. `NOT_DECIDED`: every row gets one more DMC series. When `series_max` allows no further series,
+   the stage first tests the errors. A smaller cutoff would be compared with the fine cutoff, and
+   its rows would get the same number of series, so the stage estimates the error of every tested
+   difference for that pair as `sqrt(2)` times its error at the fine cutoff (an estimate: it assumes
+   that the new rows have the error of the fine rows).
+   - If `2 x sqrt(2) x` the error at the fine cutoff is larger than the tolerance for a difference,
+     the errors are too large for the verdict `CONVERGED` also with a smaller cutoff. The stage ends
+     with `NOT_DECIDED`, and its message names every such difference with its value of `2 x
+     sqrt(2) x` the error and says to raise `series_max` above the number of series of the plan.
+   - Else, if the ladder holds a further cutoff, it is added to the plan, with the number of series
+     that the other rows have.
+   - Else the stage ends with `NOT_DECIDED`, and its message says to add a smaller cutoff at the end
+     of `auto_cutoffs`. (The default ladder has three cutoffs, so with the defaults the second item
+     can add the cutoff 5e-5 once.)
+
+The plan keeps one number of series: every cutoff of the plan, `hf` included, has the same number of
+series at every geometry. Every decision ends the stage, adds one series (at most `series_max`) or adds one
+cutoff (at most the ladder), so the stage always ends. A run that failed, was stopped, or whose
+request the engine refused (section 7, `point ... exists with another geometry`) is handled as in the
+manual mode: the stage needs attention, and no decision is made.
+
+After the last decision the status of the stage is `DONE` for every verdict: a verdict is a result,
+not a failure. The message of the stage ends with the verdict, and the command `status` and
+`results/summary.md` show it, for example:
+
+```
+all 18 DMC run(s) are DONE; automatic cutoff: CONVERGED within 1.0 kcal/mol between the cutoffs 2.5e-4 and 1e-4 (3 series)
+```
+
+Every decision is one line in `work/driver.log` and one entry in `work/trial/state.json` (entry
+`auto`, list `decisions`): the time, the plan, what was measured against `hf`, and for every tested
+difference its name, `S`, `e`, the bound and the verdict. The section "Automatic choice of the
+cutoff" of `results/trial_wavefunctions.md` prints the same decisions.
+
+### Cost
+
+The number of DMC runs is (number of geometries) x (number of cutoffs with `hf`) x (number of series).
+A target has 2 geometries, or 1 if the search did not move it. With the defaults:
+
+| | cutoffs with `hf` | series | DMC runs for 2 geometries |
+|---|---|---|---|
+| at the start | 3 | 2 | 12 |
+| at most | 4 | 4 | 32 |
+
+`montepass check` prints these two numbers for your input. A longer ladder raises the largest number
+of cutoffs. The third cutoff of the default ladder is computed only when the first two cutoffs do
+not give `CONVERGED`.
+
+Measured cost of the two cutoff ladders of section 9 (one geometry; `hf` with 2 series and 4 cuts
+with 1 series each; 2048 walkers, 200 blocks of 400 steps, 32 MPI ranks): 68.1 core-hours for water
+and 79.8 core-hours for ammonia. These are the core-hours that the engine counted for the 6 points of
+a ladder: every step of each point (the PySCF step, the conversion of the wave function, the VMC
+check, the Jastrow optimization and DMC) and the QP2 jobs. One DMC block took, for water: 2.2 s with
+`hf`, 7.4 s with the cutoff 2.5e-4 and 9.1 s with the cutoff 1e-4 (5.3 s and 6.2 s with 1e-3 and
+5e-4). For ammonia: 2.4 s, 9.2 s and 11.5 s (6.8 s and 7.5 s). So the DMC blocks are the largest
+part: about 58 of the 68.1 core-hours for water and about 71 of the 79.8 core-hours for ammonia. The
+QP2 jobs are a small part: the CIPSI calculation of the geometry (`n_det_max = 100000`) took 133 s
+for water and 395 s for ammonia, in one job with 8 threads, that is 0.30 and 0.88 core-hours.
+
+Measured cost of the stage in the two automatic runs of section 9 (the DMC settings of the pilot runs
+of each project; 32 MPI ranks): 136.0 core-hours for water (2 geometries, 12 DMC runs); for ammonia (4
+geometries) 192.7 core-hours for the first two cutoffs and `hf` with 4 series (48 DMC runs) and 115.1
+core-hours for the third cutoff with 4 series (16 DMC runs).
+
+### What you can change later
+
+- `tolerance`, `series`, `series_max`, `not_converged`: the plan that was reached (its cutoffs and its
+  number of series) is kept, no run is stopped, and the stage decides again with the new values. If
+  `series` is now larger than the number that the plan reached, every row gets that number.
+- `auto_cutoffs`, when the cutoffs that the plan reached are still the first cutoffs of the new ladder
+  (for example one more cutoff at the end of the ladder): the same as the first item. The plan is
+  kept, no run is stopped, and the stage decides again. A stage that ended with `NOT_CONVERGED`
+  because its ladder had no further cutoff then adds the new cutoff. A stage that ended with
+  `NOT_DECIDED` and the message "add a smaller cutoff" adds it too (decision 6).
+- `auto_cutoffs`, when a cutoff that the plan reached was changed or removed (the cutoffs that the
+  plan reached are then no longer the first cutoffs of the new ladder), or `n_det_max`: the stage
+  starts from the input again, with the first two cutoffs of `auto_cutoffs`, with `hf`, and with
+  `series` DMC runs for each row. A run that is `DONE` is never computed again: the stage finds it
+  by its name. A new `n_det_max` changes the name of every run except the runs of `hf`, so all runs
+  of the numeric cutoffs are computed again. A run of the old plan that this first plan does not
+  hold, and that has not ended, is stopped.
+- From a list to `cutoff = auto`, and back: the stage starts from the input of the new mode. A run
+  that both plans hold is kept. A run that only the old plan holds, and that has not ended, is
+  stopped.
+- Make the changes of the two items above (a changed or removed cutoff of the plan, `n_det_max`, a
+  switch between a list and `cutoff = auto`) only while no DMC run of the stage is running or waiting.
+  The message of the stage then begins with `all N DMC run(s) are DONE`. The reason: a stopped run is
+  not continued later (section 5), and a later decision of the automatic mode can add the same run to
+  its plan again, for example the third series of a row, or the runs of the third cutoff. The stage
+  then needs attention, and its message names every such run: `stopped after N of M blocks; the
+  stage needs every run complete`. To continue, wait until no driver job of the project runs, delete the
+  folder of each of these runs (the name in the message, below `work/qmc/`), then run
+  `montepass retry` and `montepass submit`. These runs start again from their first block.
+- Do not change `qp2_basis` or `qp2_pseudo` after the stage has started (as in the manual mode).
+
+A project that version 0.1.0 computed (its record names no `tolerance`) is read by this version. The
+stage and the report become `PENDING` once, no run is computed again, and the report gets the tests
+of the size of the expansion that its cutoffs allow: the test against `hf` needs `hf` and a numeric
+cutoff, and the convergence test needs two numeric cutoffs.
